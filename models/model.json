@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "selected_policy": "uncertainty",
+  "contests_evaluated": 445,
+  "policy_backtest": {
+    "gain": {
+      "14": 0,
+      "13": 7,
+      "hits": 3900
+    },
+    "uncertainty": {
+      "14": 0,
+      "13": 8,
+      "hits": 3888
+    },
+    "margin": {
+      "14": 0,
+      "13": 7,
+      "hits": 3892
+    },
+    "ratio": {
+      "14": 0,
+      "13": 8,
+      "hits": 3886
+    }
+  },
+  "rank_hit_rates": [
+    0.517817,
+    0.265329,
+    0.216854
+  ]
+}

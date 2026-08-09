@@ -433,3 +433,20 @@ Probabilidade + Histórico + Constraints + Otimização
                         ↓
                 PALPITE FINAL
 ```
+
+## Execução
+
+O pipeline não requer dependências externas. Ele valida os 445 concursos históricos,
+faz o backtest das políticas de alocação dos cinco duplos, grava o artefato auditável
+em `models/model.json` e produz o palpite em `output/predictions.csv`:
+
+```bash
+python main.py
+```
+
+Os testes automatizados verificam o desempate do ranking, as 19 marcações, a
+restrição do Flamengo e o cálculo da probabilidade de pelo menos 13 acertos:
+
+```bash
+python -m unittest discover -v
+```
