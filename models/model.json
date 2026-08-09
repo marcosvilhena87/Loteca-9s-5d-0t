@@ -1,32 +1,186 @@
 {
-  "version": 1,
+  "version": 3,
   "selected_policy": "uncertainty",
   "contests_evaluated": 445,
   "policy_backtest": {
     "gain": {
       "14": 0,
       "13": 7,
-      "hits": 3900
+      "hits": 3898
     },
     "uncertainty": {
       "14": 0,
       "13": 8,
-      "hits": 3888
+      "hits": 3887
     },
     "margin": {
       "14": 0,
       "13": 7,
-      "hits": 3892
+      "hits": 3891
     },
     "ratio": {
       "14": 0,
       "13": 8,
-      "hits": 3886
+      "hits": 3885
+    },
+    "exact": {
+      "14": 0,
+      "13": 8,
+      "hits": 3882
     }
   },
   "rank_hit_rates": [
     0.517817,
     0.265329,
     0.216854
-  ]
+  ],
+  "probability_diagnostics": {
+    "multiclass_brier": 0.588408,
+    "log_loss": 0.985557,
+    "ece": 0.012378,
+    "calibration_bins": [
+      {
+        "lower": 0.0,
+        "upper": 0.1,
+        "count": 418,
+        "mean_probability": 0.072272,
+        "observed_rate": 0.055024
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.2,
+        "count": 2245,
+        "mean_probability": 0.158599,
+        "observed_rate": 0.136303
+      },
+      {
+        "lower": 0.2,
+        "upper": 0.3,
+        "count": 7068,
+        "mean_probability": 0.261943,
+        "observed_rate": 0.255942
+      },
+      {
+        "lower": 0.3,
+        "upper": 0.4,
+        "count": 4055,
+        "mean_probability": 0.336867,
+        "observed_rate": 0.332922
+      },
+      {
+        "lower": 0.4,
+        "upper": 0.5,
+        "count": 2252,
+        "mean_probability": 0.446853,
+        "observed_rate": 0.457815
+      },
+      {
+        "lower": 0.5,
+        "upper": 0.6,
+        "count": 1461,
+        "mean_probability": 0.548198,
+        "observed_rate": 0.584531
+      },
+      {
+        "lower": 0.6,
+        "upper": 0.7,
+        "count": 791,
+        "mean_probability": 0.645481,
+        "observed_rate": 0.677623
+      },
+      {
+        "lower": 0.7,
+        "upper": 0.8,
+        "count": 294,
+        "mean_probability": 0.74287,
+        "observed_rate": 0.758503
+      },
+      {
+        "lower": 0.8,
+        "upper": 0.9,
+        "count": 95,
+        "mean_probability": 0.84081,
+        "observed_rate": 0.915789
+      },
+      {
+        "lower": 0.9,
+        "upper": 1.0,
+        "count": 11,
+        "mean_probability": 0.930925,
+        "observed_rate": 1.0
+      }
+    ],
+    "position_rank_hit_rates": [
+      [
+        0.485393,
+        0.301124,
+        0.213483
+      ],
+      [
+        0.492135,
+        0.292135,
+        0.21573
+      ],
+      [
+        0.552809,
+        0.235955,
+        0.211236
+      ],
+      [
+        0.478652,
+        0.280899,
+        0.240449
+      ],
+      [
+        0.541573,
+        0.258427,
+        0.2
+      ],
+      [
+        0.507865,
+        0.253933,
+        0.238202
+      ],
+      [
+        0.478652,
+        0.278652,
+        0.242697
+      ],
+      [
+        0.532584,
+        0.233708,
+        0.233708
+      ],
+      [
+        0.52809,
+        0.238202,
+        0.233708
+      ],
+      [
+        0.525843,
+        0.267416,
+        0.206742
+      ],
+      [
+        0.523596,
+        0.262921,
+        0.213483
+      ],
+      [
+        0.573034,
+        0.253933,
+        0.173034
+      ],
+      [
+        0.532584,
+        0.27191,
+        0.195506
+      ],
+      [
+        0.496629,
+        0.285393,
+        0.217978
+      ]
+    ]
+  }
 }
