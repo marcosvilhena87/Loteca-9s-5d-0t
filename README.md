@@ -1034,9 +1034,9 @@ scores históricos usando apenas informação passada
 
 ## Próximas prioridades — ordem prática
 
-1. [ ] expandir backtest para 10–14;
-2. [ ] calcular `P13+` e `P12+` empíricos;
-3. [ ] salvar backtest concurso a concurso em `output/backtest.csv`;
+1. [x] expandir backtest para 10–14;
+2. [x] calcular `P13+` e `P12+` empíricos;
+3. [x] salvar backtest concurso a concurso em `output/backtest.csv`;
 4. [ ] implementar bootstrap e intervalos de confiança;
 5. [ ] registrar empate estatístico entre políticas quando apropriado;
 6. [ ] criar `historical_13plus_score` / `hist_13plus`;

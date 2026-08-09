@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import math
+import statistics
 from itertools import combinations
 from pathlib import Path
 
@@ -195,15 +197,22 @@ def ticket_for_policy(games: list[Match], policy: str,
 
 
 def walk_forward_backtest(contests: dict[int, list[Match]],
-                          minimum_history: int = MIN_WALK_FORWARD_CONTESTS
-                          ) -> dict[str, dict[str, int]]:
-    """Compare every policy prospectively, never learning from the test contest."""
-    ordered = [contests[key] for key in sorted(contests)]
+                          minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+                          output_path: str | Path | None = None
+                          ) -> dict[str, dict[str, int | float]]:
+    """Compare policies prospectively and optionally persist contest-level evidence.
+
+    The exported empirical rates are cumulative within each strategy and therefore
+    use only evaluations observed up to that row.  They must not be confused with
+    the modelled Poisson-binomial probability of a particular ticket.
+    """
+    contest_ids = sorted(contests)
+    ordered = [contests[key] for key in contest_ids]
     if not 1 <= minimum_history < len(ordered):
         raise ValueError("janela inicial inválida para walk-forward")
     strategies = (*POLICIES, "exact")
-    evaluations = {policy: {"14": 0, "13": 0, "hits": 0}
-                   for policy in strategies}
+    hit_history: dict[str, list[int]] = {policy: [] for policy in strategies}
+    records: list[dict[str, object]] = []
     for index in range(minimum_history, len(ordered)):
         rates = position_rank_hit_rates(ordered[:index])
         games = ordered[index]
@@ -211,9 +220,44 @@ def walk_forward_backtest(contests: dict[int, list[Match]],
             ticket, _ = ticket_for_policy(games, policy, rates)
             hits = sum(game.actual in selection
                        for game, selection in zip(games, ticket))
-            evaluations[policy]["hits"] += hits
-            evaluations[policy]["14"] += hits == 14
-            evaluations[policy]["13"] += hits == 13
+            history = hit_history[policy]
+            history.append(hits)
+            double_games = [game.jogo for game, pick in zip(games, ticket) if len(pick) == 2]
+            records.append({
+                "concurso": contest_ids[index], "strategy": policy,
+                "ordering": policy, "distribution_id": "T1=14|T2=5|T3=0",
+                "hits": hits, "hit_14": int(hits == 14), "hit_13": int(hits == 13),
+                "hit_12": int(hits == 12),
+                "p13_plus_empirical": f"{sum(value >= 13 for value in history) / len(history):.8f}",
+                "p12_plus_empirical": f"{sum(value >= 12 for value in history) / len(history):.8f}",
+                "double_games": ",".join(map(str, double_games)),
+                "ticket": "|".join("".join(r for r in ("1", "X", "2") if r in pick)
+                                     for pick in ticket),
+            })
+    evaluations: dict[str, dict[str, int | float]] = {}
+    for policy, hits in hit_history.items():
+        evaluations[policy] = {
+            "14": sum(value == 14 for value in hits),
+            "13": sum(value == 13 for value in hits),
+            "12": sum(value == 12 for value in hits),
+            "11": sum(value == 11 for value in hits),
+            "10": sum(value == 10 for value in hits),
+            "<=9": sum(value <= 9 for value in hits),
+            "hits": sum(hits), "mean": round(statistics.fmean(hits), 6),
+            "median": float(statistics.median(hits)),
+            "stddev": round(statistics.pstdev(hits), 6),
+            "min": min(hits), "max": max(hits),
+            "p13_plus_empirical": round(sum(value >= 13 for value in hits) / len(hits), 8),
+            "p12_plus_empirical": round(sum(value >= 12 for value in hits) / len(hits), 8),
+        }
+    if output_path is not None:
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=records[0].keys(), delimiter=";",
+                                    lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(records)
     return evaluations
 
 
@@ -246,21 +290,24 @@ def exact_ticket(games: list[Match]) -> tuple[list[set[str]], list[str]]:
     return build_ticket(games, set(best_indexes))
 
 
-def train(history_path: str, model_path: str) -> dict[str, object]:
+def train(history_path: str, model_path: str,
+          backtest_path: str | Path | None = "output/backtest.csv") -> dict[str, object]:
     contests = group_contests(read_matches(history_path, require_actual=True))
-    evaluations = walk_forward_backtest(contests)
-    # Main goal first, then perfect tickets and aggregate hits as stable tie-breakers.
+    evaluations = walk_forward_backtest(contests, output_path=backtest_path)
+    # Goal hierarchy: 14, 13+, 12+, stability and finally average hits.
     strategies = (*POLICIES, "exact")
     selected = max(strategies, key=lambda p: (
+        evaluations[p]["14"],
         evaluations[p]["13"] + evaluations[p]["14"],
-        evaluations[p]["14"], evaluations[p]["hits"], -strategies.index(p),
+        evaluations[p]["12"] + evaluations[p]["13"] + evaluations[p]["14"],
+        -evaluations[p]["stddev"], evaluations[p]["mean"], -strategies.index(p),
     ))
     rank_hits = [0, 0, 0]
     for games in contests.values():
         for game in games:
             rank_hits[game.ranking.index(game.actual)] += 1
     model = {
-        "version": 4, "selected_policy": selected,
+        "version": 5, "selected_policy": selected,
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
             "minimum_history": MIN_WALK_FORWARD_CONTESTS,
