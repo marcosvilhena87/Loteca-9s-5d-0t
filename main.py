@@ -43,6 +43,11 @@ def main() -> None:
         print(f"[THRESHOLD RECOVERY {threshold}] {result['cases']} trocas | "
               f"Top2 {result['top2_baseline_wins']} x recovery {result['recovery_wins']} | "
               f"win rate {result['recovery_win_rate']:.2%} | IC95% [{low:.2%}, {high:.2%}]")
+    nested = model["error_recovery"]["nested_walk_forward"]
+    print(f"[NESTED RECOVERY] {nested['test_contests']} concursos | "
+          f"delta P13+ {nested['delta_p13_plus']:+.2%} | "
+          f"delta P12+ {nested['delta_p12_plus']:+.2%} | "
+          f"thresholds {nested['threshold_usage']}")
     predict(args.next_contest, args.model, args.output)
 
 

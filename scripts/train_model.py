@@ -356,6 +356,7 @@ def walk_forward_second_mark(contests: dict[int, list[Match]],
         return {
             "cases": len(switched), "top2_baseline_wins": top2_wins,
             "recovery_wins": recovery_wins, "neutral": 0,
+            "net_recovery_gain": recovery_wins - top2_wins,
             "recovery_win_rate": round(rate, 8),
             "recovery_win_rate_ci95": [round(value, 8) for value in ci],
             "bootstrap_resamples": 2000,
@@ -384,6 +385,103 @@ def walk_forward_second_mark(contests: dict[int, list[Match]],
                                               audit["recovery_wins"] > audit["top2_baseline_wins"]),
         # Promotion additionally requires ticket-level P13+/P12+ evidence.
         "promoted_to_ticket": False,
+    }
+
+
+def nested_walk_forward_second_mark(
+    contests: dict[int, list[Match]],
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+    allocator: str = "uncertainty",
+) -> dict[str, object]:
+    """Select a recovery threshold using only evidence available before each test.
+
+    Inner observations are themselves out of sample: a historical game's recovery
+    score is produced from contests older than that game.  The chosen threshold is
+    then frozen for the next contest.  A deterministic, conservative tie-break
+    prefers fewer switches and the larger threshold.
+    """
+    contest_ids = sorted(contests)
+    ordered = [contests[key] for key in contest_ids]
+    if not 1 <= minimum_history < len(ordered):
+        raise ValueError("janela inicial inválida para nested walk-forward")
+
+    inner_observations: list[dict[str, object]] = []
+    selections: list[dict[str, object]] = []
+    baseline_hits: list[int] = []
+    nested_hits: list[int] = []
+    threshold_usage = {f"{value:.2f}": 0 for value in RECOVERY_THRESHOLDS}
+
+    def append_out_of_sample_observations(index: int) -> None:
+        model = error_recovery_model(ordered[:index])
+        for game in ordered[index]:
+            if game.actual == game.ranking[0]:
+                continue
+            scores = recovery_scores(game, model)
+            inner_observations.append({
+                "advantage": scores["recovery_top3"] - scores["recovery_top2"],
+                "top3_hit": game.actual == game.ranking[2],
+            })
+
+    def threshold_score(threshold: float) -> tuple[int, int, float]:
+        switched = [row for row in inner_observations
+                    if float(row["advantage"]) >= threshold
+                    and float(row["advantage"]) > 0]
+        wins = sum(bool(row["top3_hit"]) for row in switched)
+        net_gain = 2 * wins - len(switched)
+        # Net gain is primary; fewer switches and a larger threshold guard ties.
+        return net_gain, -len(switched), threshold
+
+    # Seed the inner audit from the initial window while retaining a temporal
+    # cutoff for every score (contest 2 uses contest 1, and so on).
+    for index in range(1, minimum_history):
+        append_out_of_sample_observations(index)
+
+    for index in range(minimum_history, len(ordered)):
+        threshold = max(RECOVERY_THRESHOLDS, key=threshold_score)
+        threshold_key = f"{threshold:.2f}"
+        threshold_usage[threshold_key] += 1
+        games = ordered[index]
+        rates = position_rank_hit_rates(ordered[:index])
+        recovery_model = error_recovery_model(ordered[:index])
+        baseline, _ = allocated_ticket(games, allocator, "top2_baseline", rates,
+                                       recovery_model)
+        nested, _ = allocated_ticket(games, allocator, "threshold_recovery", rates,
+                                     recovery_model, threshold)
+        base_hits = sum(game.actual in pick for game, pick in zip(games, baseline))
+        candidate_hits = sum(game.actual in pick for game, pick in zip(games, nested))
+        baseline_hits.append(base_hits)
+        nested_hits.append(candidate_hits)
+        selections.append({
+            "concurso": contest_ids[index], "threshold": threshold,
+            "past_observations": len(inner_observations),
+            "baseline_hits": base_hits, "nested_hits": candidate_hits,
+        })
+
+        # Add the just-tested contest only after its frozen decision is recorded.
+        append_out_of_sample_observations(index)
+
+    def ticket_summary(hits: list[int]) -> dict[str, int | float]:
+        return {
+            "14": sum(value == 14 for value in hits),
+            "13": sum(value == 13 for value in hits),
+            "12": sum(value == 12 for value in hits),
+            "p13_plus_empirical": round(sum(value >= 13 for value in hits) / len(hits), 8),
+            "p12_plus_empirical": round(sum(value >= 12 for value in hits) / len(hits), 8),
+            "mean": round(statistics.fmean(hits), 6),
+        }
+
+    return {
+        "allocator": allocator, "test_contests": len(nested_hits),
+        "no_future_information": True, "threshold_usage": threshold_usage,
+        "selections": selections,
+        "baseline": ticket_summary(baseline_hits),
+        "nested": ticket_summary(nested_hits),
+        "delta_p13_plus": round(
+            ticket_summary(nested_hits)["p13_plus_empirical"]
+            - ticket_summary(baseline_hits)["p13_plus_empirical"], 8),
+        "delta_p12_plus": round(
+            ticket_summary(nested_hits)["p12_plus_empirical"]
+            - ticket_summary(baseline_hits)["p12_plus_empirical"], 8),
     }
 
 
@@ -530,11 +628,13 @@ def heuristic_ticket(games: list[Match], policy: str) -> tuple[list[set[str]], l
 
 def allocated_ticket(games: list[Match], policy: str, selector: str,
                      rates: list[list[float]] | None = None,
-                     recovery_model: dict | None = None) -> tuple[list[set[str]], list[str]]:
+                     recovery_model: dict | None = None,
+                     recovery_threshold: float = 0.0) -> tuple[list[set[str]], list[str]]:
     """Compose a DoubleAllocator and a SecondMarkSelector into one valid ticket."""
     baseline, _ = ticket_for_policy(games, policy, rates)
     indexes = {i for i, pick in enumerate(baseline) if len(pick) == 2}
-    marks = {i: select_second_mark(games[i], selector, recovery_model) for i in indexes}
+    marks = {i: select_second_mark(games[i], selector, recovery_model, recovery_threshold)
+             for i in indexes}
     return build_ticket(games, indexes, second_marks=marks)
 
 
@@ -699,8 +799,9 @@ def train(history_path: str, model_path: str,
     top1_meta = walk_forward_top1_meta(contests)
     recovery = error_recovery_model(list(contests.values()))
     recovery_audit = walk_forward_second_mark(contests)
+    nested_recovery = nested_walk_forward_second_mark(contests)
     model = {
-        "version": 9, "selected_policy": selected,
+        "version": 10, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -722,6 +823,7 @@ def train(history_path: str, model_path: str,
         },
         "error_recovery": {
             "walk_forward_disagreement": recovery_audit,
+            "nested_walk_forward": nested_recovery,
             "contexts": [
                 {"p_top1_bin": key[0], "margin_bin": key[1], "top1_result": key[2],
                  **{name: round(value, 8) for name, value in values.items()}}

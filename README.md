@@ -317,6 +317,39 @@ Concurso 102     → teste real
 
 O resultado nested é o que deve decidir se `threshold_recovery` merece promoção.
 
+## Resultado nested walk-forward
+
+A seleção prospectiva já foi implementada. Cada score histórico usado para escolher
+o threshold também é fora da amostra, e o threshold fica congelado antes de avaliar
+o concurso seguinte.
+
+```text
+415 concursos de teste
+
+                         Top2 baseline    Nested recovery
+14                              0                 0
+13                              6                 5
+12                             19                31
+P13+                       1.4458%           1.2048%
+P12+                       6.0241%           8.6747%
+média                       8.7205            8.7759
+
+delta P13+: -0.2410 p.p.
+delta P12+: +2.6506 p.p.
+```
+
+Thresholds escolhidos usando somente o passado:
+
+```text
+0.05: 373 concursos
+0.10:  42 concursos
+0.15:   0 concursos
+```
+
+Embora o nested tenha melhorado P12+ e a média, reduziu P13+. Portanto, em respeito
+ao critério de sucesso e às Hard Constraints metodológicas, ele **não foi promovido**:
+o ticket final continua usando `top2_baseline`.
+
 ---
 
 # Segmentação por gap Top2–Top3
@@ -878,9 +911,9 @@ python -m unittest discover -v
 
 ## Próximas prioridades
 
-1. [ ] implementar **nested walk-forward** para seleção do threshold;
-2. [ ] registrar `net_recovery_gain` formalmente na telemetria;
-3. [ ] segmentar por `gap_23`;
+1. [x] implementar **nested walk-forward** para seleção do threshold;
+2. [x] registrar `net_recovery_gain` formalmente na telemetria;
+3. [x] segmentar por `gap_23`;
 4. [ ] testar regra bidimensional `recovery_advantage × gap_23`;
 5. [ ] segmentar por faixa de `p(Top1)`;
 6. [ ] implementar backtest ticket-level dos thresholds;

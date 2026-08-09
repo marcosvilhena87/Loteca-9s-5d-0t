@@ -12,6 +12,7 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  top1_meta_features, top1_meta_score,
                                  top1_reliability_model, train, walk_forward_backtest,
                                  walk_forward_reliability, walk_forward_second_mark,
+                                 nested_walk_forward_second_mark,
                                  walk_forward_top1_meta)
 
 
@@ -210,6 +211,20 @@ class PipelineTests(unittest.TestCase):
                          {"0-2pp", "2-5pp", "5-10pp", "10pp+"})
         self.assertEqual(audit["bootstrap_resamples"], 2000)
         self.assertEqual(len(audit["recovery_win_rate_ci95"]), 2)
+        self.assertEqual(audit["threshold_results"]["0.10"]["net_recovery_gain"], 14)
+
+    def test_nested_threshold_selection_is_prospective_and_preserves_constraints(self):
+        contests = {}
+        for concurso in range(1, 5):
+            contests[concurso] = [Match(concurso, i + 1, "A", "B",
+                {"1": .50, "X": .30, "2": .20}, "2") for i in range(14)]
+        audit = nested_walk_forward_second_mark(contests, minimum_history=2)
+        self.assertTrue(audit["no_future_information"])
+        self.assertEqual(audit["test_contests"], 2)
+        self.assertEqual(audit["selections"][0]["past_observations"], 14)
+        self.assertEqual(audit["selections"][1]["past_observations"], 28)
+        self.assertEqual(sum(audit["threshold_usage"].values()), 2)
+        self.assertGreaterEqual(audit["nested"]["mean"], audit["baseline"]["mean"])
 
 
 if __name__ == "__main__":
