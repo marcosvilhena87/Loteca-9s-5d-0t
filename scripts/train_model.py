@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import random
 import statistics
 from itertools import combinations
 from pathlib import Path
@@ -22,7 +23,9 @@ META_FEATURE_NAMES = ("intercept", "p_top1", "p_top2", "p_top3",
                       "margin_top1_top2", "ratio_top2_top1", "entropy",
                       "top1_is_1", "top1_is_X", "top1_is_2")
 DISAGREEMENT_STRENGTH_BINS = (0.02, 0.05, 0.10)
-RECOVERY_SELECTORS = ("top2_baseline", "recovery")
+RECOVERY_SELECTORS = ("top2_baseline", "recovery", "threshold_recovery")
+RECOVERY_THRESHOLDS = (0.00, 0.02, 0.05, 0.10, 0.15)
+GAP_23_BINS = (0.02, 0.05, 0.10)
 
 
 def _bin_index(value: float, boundaries: tuple[float, ...]) -> int:
@@ -88,14 +91,18 @@ def recovery_scores(
 
 
 def select_second_mark(game: Match, selector: str,
-                       recovery_model: dict | None = None) -> str:
+                       recovery_model: dict | None = None,
+                       threshold: float = 0.0) -> str:
     """Select the protection mark independently from double allocation."""
     if selector == "top2_baseline":
         return game.ranking[1]
-    if selector != "recovery":
+    if selector not in ("recovery", "threshold_recovery"):
         raise ValueError(f"seletor de segunda marca inválido: {selector}")
+    if threshold < 0:
+        raise ValueError("threshold de recovery não pode ser negativo")
     scores = recovery_scores(game, recovery_model or {})
-    return game.ranking[2] if scores["recovery_top3"] > scores["recovery_top2"] else game.ranking[1]
+    advantage = scores["recovery_top3"] - scores["recovery_top2"]
+    return game.ranking[2] if advantage >= threshold and advantage > 0 else game.ranking[1]
 
 
 def top1_reliability_model(contests: list[list[Match]]) -> dict[tuple[int, int, str], dict[str, float]]:
@@ -315,32 +322,65 @@ def walk_forward_second_mark(contests: dict[int, list[Match]],
     ordered = [contests[key] for key in sorted(contests)]
     if not 1 <= minimum_history < len(ordered):
         raise ValueError("janela inicial inválida para walk-forward")
-    audit = {"cases": 0, "top2_baseline_wins": 0, "recovery_wins": 0,
-             "neutral": 0, "top1_misses": 0, "recovery_top3_uses": 0}
+    observations: list[dict[str, object]] = []
     for index in range(minimum_history, len(ordered)):
         model = error_recovery_model(ordered[:index])
         for game in ordered[index]:
             if game.actual == game.ranking[0]:
                 continue
-            audit["top1_misses"] += 1
-            selected = select_second_mark(game, "recovery", model)
-            if selected == game.ranking[1]:
-                continue
-            audit["cases"] += 1
-            audit["recovery_top3_uses"] += 1
-            if game.actual == selected:
-                audit["recovery_wins"] += 1
-            else:
-                audit["top2_baseline_wins"] += 1
-    informative = audit["top2_baseline_wins"] + audit["recovery_wins"]
+            scores = recovery_scores(game, model)
+            observations.append({
+                "advantage": scores["recovery_top3"] - scores["recovery_top2"],
+                "gap_23": game.probabilities[game.ranking[1]] - game.probabilities[game.ranking[2]],
+                "p_top1": game.probabilities[game.ranking[0]],
+                "top3_hit": game.actual == game.ranking[2],
+            })
+
+    def summarize(rows: list[dict[str, object]], threshold: float = 0.0) -> dict[str, object]:
+        switched = [row for row in rows if float(row["advantage"]) >= threshold
+                    and float(row["advantage"]) > 0]
+        recovery_wins = sum(bool(row["top3_hit"]) for row in switched)
+        top2_wins = len(switched) - recovery_wins
+        rate = recovery_wins / len(switched) if switched else 0.0
+        # Fixed seed makes the 2,000-resample percentile interval reproducible.
+        rng = random.Random(20250613 + round(threshold * 100))
+        samples = []
+        outcomes = [int(bool(row["top3_hit"])) for row in switched]
+        if outcomes:
+            for _ in range(2000):
+                samples.append(sum(rng.choice(outcomes) for _ in outcomes) / len(outcomes))
+            samples.sort()
+            ci = [samples[49], samples[1949]]
+        else:
+            ci = [0.0, 0.0]
+        return {
+            "cases": len(switched), "top2_baseline_wins": top2_wins,
+            "recovery_wins": recovery_wins, "neutral": 0,
+            "recovery_win_rate": round(rate, 8),
+            "recovery_win_rate_ci95": [round(value, 8) for value in ci],
+            "bootstrap_resamples": 2000,
+            "statistically_distinguishable_from_50pct": bool(ci[0] > .5 or ci[1] < .5),
+        }
+
+    threshold_results = {f"{threshold:.2f}": summarize(observations, threshold)
+                         for threshold in RECOVERY_THRESHOLDS}
+    audit = threshold_results["0.00"]
+    gap_labels = ("0-2pp", "2-5pp", "5-10pp", "10pp+")
+    p_labels = ("33-40%", "40-45%", "45-50%", "50-60%", "60%+")
+    by_gap = {label: summarize([row for row in observations
+                               if _bin_index(float(row["gap_23"]), GAP_23_BINS) == index])
+              for index, label in enumerate(gap_labels)}
+    by_p_top1 = {label: summarize([row for row in observations
+                                  if _bin_index(float(row["p_top1"]), P_TOP1_BINS) == index])
+                 for index, label in enumerate(p_labels)}
     return {
         **audit,
-        "recovery_win_rate": round(audit["recovery_wins"] / informative, 8)
-        if informative else 0.0,
-        "recovery_top3_usage_rate": round(audit["recovery_top3_uses"] /
-                                           audit["top1_misses"], 8)
-        if audit["top1_misses"] else 0.0,
-        "passes_disagreement_threshold": bool(informative and
+        "top1_misses": len(observations), "recovery_top3_uses": audit["cases"],
+        "recovery_top3_usage_rate": round(audit["cases"] / len(observations), 8)
+        if observations else 0.0,
+        "threshold_results": threshold_results,
+        "by_gap_23": by_gap, "by_p_top1": by_p_top1,
+        "passes_disagreement_threshold": bool(audit["cases"] and
                                               audit["recovery_wins"] > audit["top2_baseline_wins"]),
         # Promotion additionally requires ticket-level P13+/P12+ evidence.
         "promoted_to_ticket": False,
@@ -660,7 +700,7 @@ def train(history_path: str, model_path: str,
     recovery = error_recovery_model(list(contests.values()))
     recovery_audit = walk_forward_second_mark(contests)
     model = {
-        "version": 8, "selected_policy": selected,
+        "version": 9, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {

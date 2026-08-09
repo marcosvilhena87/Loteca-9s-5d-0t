@@ -38,6 +38,11 @@ def main() -> None:
           f"Top2 {recovery['top2_baseline_wins']} x recovery {recovery['recovery_wins']} | "
           f"win rate {recovery['recovery_win_rate']:.2%} | "
           f"seletor final: {model['selected_second_mark']}")
+    for threshold, result in recovery["threshold_results"].items():
+        low, high = result["recovery_win_rate_ci95"]
+        print(f"[THRESHOLD RECOVERY {threshold}] {result['cases']} trocas | "
+              f"Top2 {result['top2_baseline_wins']} x recovery {result['recovery_wins']} | "
+              f"win rate {result['recovery_win_rate']:.2%} | IC95% [{low:.2%}, {high:.2%}]")
     predict(args.next_contest, args.model, args.output)
 
 

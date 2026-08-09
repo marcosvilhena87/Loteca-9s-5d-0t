@@ -86,7 +86,9 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
             "reliability_context": f"p{context[0]}-m{context[1]}-{context[2]}",
             "recovery_top2": f"{recoveries['recovery_top2']:.6f}",
             "recovery_top3": f"{recoveries['recovery_top3']:.6f}",
-            "recovery_advantage": f"{abs(recoveries['recovery_top2'] - recoveries['recovery_top3']):.6f}",
+            "probability_advantage": f"{game.probabilities[ranking[1]] - game.probabilities[ranking[2]]:.6f}",
+            "gap_23": f"{game.probabilities[ranking[1]] - game.probabilities[ranking[2]]:.6f}",
+            "recovery_advantage": f"{recoveries['recovery_top3'] - recoveries['recovery_top2']:.6f}",
             "second_mark_baseline": ranking[1],
             "second_mark_recovery": recovery_mark,
             "second_mark_final": (next(iter(selection - {ranking[0]}), "")
