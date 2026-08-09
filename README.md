@@ -68,9 +68,9 @@ Top3: 21.6854%
 
 # Princípio central — preservar o Top1 até existir evidência melhor
 
-O `p(Top1)` é o baseline individual mais forte do projeto.
+O `p(Top1)` continua sendo o baseline individual mais forte do projeto.
 
-A pesquisa histórica não deve procurar simplesmente uma métrica diferente. Uma nova métrica só deve substituir ou reordenar `p(Top1)` se demonstrar **informação incremental fora da amostra**.
+Uma nova métrica só deve substituir ou reordenar `p(Top1)` se demonstrar **informação incremental fora da amostra**.
 
 Critérios mínimos:
 
@@ -125,13 +125,11 @@ Conclusão atual:
 
 > **nenhuma das correções testadas superou `p(Top1)` fora da amostra.**
 
-Essas métricas permanecem como benchmarks e telemetria. Não devem alterar o ticket final enquanto não demonstrarem ganho incremental.
+Essas métricas permanecem como benchmarks/telemetria e **não alteram o ticket final**.
 
----
+## p(top1_meta) — status congelado
 
-# p(top1_meta) — status experimental congelado
-
-O meta-modelo usa regressão logística para estimar:
+O meta-modelo atual usa regressão logística para estimar:
 
 ```text
 p(top1_meta) = P(Top1_hit | contexto)
@@ -151,58 +149,15 @@ top1_is_X
 top1_is_2
 ```
 
-Como primeira revisão técnica, testar uma versão reduzida para diminuir redundâncias matemáticas:
+Revisões técnicas opcionais antes de arquivar definitivamente essa linha:
 
 ```text
-p_top1
-margin_top1_top2
-entropy
-top1_is_X
-top1_is_2
+1. reduzir redundâncias entre features;
+2. usar Top1=1 como categoria de referência;
+3. testar refit completo em todo histórico disponível a cada passo walk-forward.
 ```
 
-Também validar uma implementação de referência com **refit completo em todo o histórico disponível a cada passo walk-forward**, em vez de depender apenas da atualização online.
-
-Mesmo que essa revisão seja feita, `p(top1_meta)` permanece congelado até superar o baseline em Brier e disagreement.
-
----
-
-# Disagreement por intensidade
-
-Para qualquer score candidato, medir:
-
-```text
-delta_score = |score_candidato - p(top1)|
-```
-
-Faixas:
-
-```text
-< 0.02
-0.02–0.05
-0.05–0.10
->= 0.10
-```
-
-Objetivo:
-
-> descobrir se alguma métrica só acrescenta valor quando produz uma discordância forte.
-
----
-
-# Disagreement por faixa de p(Top1)
-
-Separar por nível de confiança do favorito:
-
-```text
-33–40%
-40–45%
-45–50%
-50–60%
-60%+
-```
-
-Uma métrica pode perder globalmente e ainda acrescentar sinal em um regime específico. Qualquer uso condicional deve ser validado fora da amostra.
+Mesmo com essas revisões, `p(top1_meta)` só poderá ser promovido se superar o baseline em Brier e disagreement.
 
 ---
 
@@ -221,7 +176,7 @@ Seco  = Top1
 Duplo = Top1 + Top2
 ```
 
-A próxima investigação deve comparar:
+A investigação agora deve comparar:
 
 ```text
 Top1 + Top2
@@ -262,7 +217,9 @@ Candidatos:
 ```text
 top2_baseline
 recovery
-hybrid_double_value
+threshold_recovery
+second_mark_meta
+double_value
 ```
 
 Fluxo desejado:
@@ -276,7 +233,7 @@ DoubleAllocator
    ↓
 SecondMarkSelector
    ↓
-T1T2 ou T1T3 em cada duplo
+T1T2 ou T1T3
    ↓
 constraints
    ↓
@@ -289,120 +246,156 @@ Essa separação permite descobrir se o ganho vem da escolha dos jogos duplos ou
 
 # Error Recovery Score
 
-Criar scores históricos condicionados ao erro do Top1:
+O recovery usa apenas concursos anteriores e somente partidas em que o Top1 realmente falhou.
+
+Definições:
 
 ```text
 recovery_top2 = P(Top2_hit | Top1_miss, contexto)
 recovery_top3 = P(Top3_hit | Top1_miss, contexto)
 ```
 
-Como Top2 e Top3 são os únicos resultados possíveis quando Top1 falha:
+Como Top2 e Top3 são os únicos resultados possíveis quando Top1 erra:
 
 ```text
-recovery_top2 + recovery_top3 = 1
+recovery_top2 + recovery_top3 ≈ 1
 ```
 
-por contexto, salvo suavização/estimativa.
-
-Contexto candidato:
-
-```text
-p_top1
-p_top2
-p_top3
-margin_top1_top2
-margin_top2_top3
-entropy
-top1_is_1/X/2
-perfil probabilístico do concurso
-```
-
-A primeira versão deve ser simples e regularizada para evitar overfitting.
-
-Objetivo:
-
-> escolher a melhor proteção do Top1, e não substituir o Top1.
+A primeira implementação usa contexto deliberadamente simples e regularizado.
 
 ---
 
-# Second-Mark Disagreement Test
+# Estado atual do Second-Mark Disagreement
 
-Criar um disagreement específico da segunda marcação.
-
-Baseline:
+Resultado walk-forward atual:
 
 ```text
-p(Top2) > p(Top3)
-→ escolher Top2
+[SECOND-MARK DISAGREEMENT]
+739 casos
+Top2 baseline wins: 368
+recovery wins:      371
+recovery win rate:  50.20%
+seletor final:      top2_baseline
 ```
 
-Histórico:
+Interpretação:
 
 ```text
-recovery_top3 > recovery_top2
-→ escolher Top3
+Top2 baseline: 49.80%
+Recovery:      50.20%
+Diferença:     3 casos informativos
 ```
 
-Avaliar somente casos em que:
+Esse resultado é **empate prático**, não evidência suficiente para promover `recovery` ao ticket final.
+
+Ainda assim, ele é mais promissor que as correções históricas do Top1, pois foi a primeira linha histórica recente que não ficou claramente abaixo do baseline.
+
+Critérios antes de promoção:
 
 ```text
-Top1 errou
+IC95% do win rate
+estabilidade temporal
+ganho em P13+
+ganho em P12+
+robustez por faixa/contexto
 ```
 
-E, entre esses casos, focar nas situações em que baseline e recovery discordaram.
+Até lá:
+
+```text
+SecondMarkSelector final = top2_baseline
+```
+
+---
+
+# Recovery Advantage
+
+Criar explicitamente:
+
+```text
+recovery_advantage = recovery_top3 - recovery_top2
+```
+
+E também:
+
+```text
+probability_advantage = p(Top2) - p(Top3)
+```
+
+A troca `T2 → T3` não deve ocorrer por qualquer diferença mínima no histórico.
+
+Regra candidata:
+
+```text
+usar T1T2 por padrão
+usar T1T3 somente se recovery_advantage >= threshold
+```
+
+---
+
+# Threshold Recovery
+
+Testar thresholds em walk-forward:
+
+```text
+0.00
+0.02
+0.05
+0.10
+0.15
+```
 
 Saída desejada:
 
 ```text
-[SECOND-MARK DISAGREEMENT]
-casos: N
-Top2 baseline wins: X
-recovery wins: Y
-neutros: Z
-recovery win rate: ...
+threshold   trocas_T2_T3   Top2_wins   recovery_wins   win_rate   P13+   P12+
+0.00              ...          ...            ...          ...      ...    ...
+0.02              ...          ...            ...          ...      ...    ...
+0.05              ...          ...            ...          ...      ...    ...
+0.10              ...          ...            ...          ...      ...    ...
+0.15              ...          ...            ...          ...      ...    ...
 ```
 
-Critério mínimo para promoção:
-
-```text
-recovery win rate > 50%
-```
-
-mas a decisão final deve considerar também IC95%, estabilidade temporal e impacto no ticket.
+O objetivo é descobrir se o histórico só agrega valor quando sua preferência por Top3 é forte.
 
 ---
 
-# Second-Mark Disagreement por intensidade
+# Segmentação por gap Top2–Top3
 
-Medir a força da preferência histórica:
-
-```text
-recovery_advantage = |recovery_top2 - recovery_top3|
-```
-
-Faixas sugeridas:
+Criar:
 
 ```text
-< 0.02
-0.02–0.05
-0.05–0.10
->= 0.10
+gap_23 = p(Top2) - p(Top3)
 ```
 
-Possível regra futura:
+Faixas iniciais:
 
 ```text
-usar T1T2 normalmente
-usar T1T3 apenas quando recovery_top3 - recovery_top2 >= threshold
+0–2 p.p.
+2–5 p.p.
+5–10 p.p.
+10+ p.p.
 ```
 
-O `threshold` deve ser escolhido por walk-forward.
+Hipótese a testar:
+
+> o histórico pode ter mais valor quando `p(Top2)` e `p(Top3)` estão muito próximos.
+
+Exemplo de telemetria desejada:
+
+```text
+[SECOND-MARK BY GAP23]
+0–2 p.p.   → recovery win rate ...
+2–5 p.p.   → recovery win rate ...
+5–10 p.p.  → recovery win rate ...
+10+ p.p.   → recovery win rate ...
+```
 
 ---
 
-# Second-Mark Disagreement por faixa de p(Top1)
+# Segmentação por p(Top1)
 
-Também segmentar o recovery por confiança do Top1:
+Também separar o Second-Mark Disagreement por confiança do Top1:
 
 ```text
 33–40%
@@ -412,7 +405,89 @@ Também segmentar o recovery por confiança do Top1:
 60%+
 ```
 
-Isso pode revelar que a escolha histórica de Top3 só agrega valor em partidas muito equilibradas ou em regimes específicos.
+O recovery pode ser neutro globalmente e útil apenas em partidas muito equilibradas.
+
+Qualquer regra condicional deve ser definida apenas com histórico passado e testada prospectivamente.
+
+---
+
+# Melhorias do contexto de recovery
+
+O contexto inicial é propositalmente simples.
+
+Features candidatas para testes incrementais:
+
+```text
+p_top1
+p_top2
+p_top3
+margin_top1_top2
+gap_top2_top3
+ratio_top3_top2
+entropy
+top1_is_1/X/2
+```
+
+Evitar adicionar tudo de uma vez para não criar buckets esparsos.
+
+Ordem sugerida:
+
+```text
+1. gap Top2-Top3;
+2. entropia;
+3. p(Top2)/p(Top3);
+4. identidade do Top1;
+5. perfil probabilístico do concurso.
+```
+
+Toda expansão deve demonstrar ganho em walk-forward.
+
+---
+
+# Second-Mark Meta Model
+
+Depois dos testes com recovery simples/threshold, testar um modelo específico para a segunda marcação.
+
+Treinar somente nos casos em que Top1 errou.
+
+Target:
+
+```text
+0 = Top2 foi o resultado real
+1 = Top3 foi o resultado real
+```
+
+Features candidatas:
+
+```text
+p_top1
+p_top2
+p_top3
+margin_top1_top2
+gap_top2_top3
+ratio_top3_top2
+entropy
+top1_is_X
+top1_is_2
+```
+
+Saída:
+
+```text
+p_top3_given_top1_miss = P(Top3_hit | Top1_miss, contexto)
+```
+
+Regra básica:
+
+```text
+p_top3_given_top1_miss > threshold
+→ T1T3
+
+caso contrário
+→ T1T2
+```
+
+O threshold deve ser escolhido em walk-forward, não necessariamente 0.50.
 
 ---
 
@@ -448,11 +523,11 @@ Benchmarks obrigatórios:
 
 ```text
 Top1+Top2 baseline
-Top1+melhor_recovery
-Top1+double_value_score
+Top1+recovery
+Top1+threshold_recovery
+Top1+second_mark_meta
+Top1+double_value
 ```
-
-Uma segunda marcação histórica só deve ser promovida se melhorar P13+/P12+ fora da amostra.
 
 ---
 
@@ -461,12 +536,12 @@ Uma segunda marcação histórica só deve ser promovida se melhorar P13+/P12+ f
 Comparar sistematicamente:
 
 ```text
-                     Top2 baseline   Recovery   DoubleValue
-gain                       ...          ...          ...
-uncertainty                ...          ...          ...
-margin                     ...          ...          ...
-ratio                      ...          ...          ...
-exact                      ...          ...          ...
+                     Top2   Recovery   Threshold   Meta   DoubleValue
+gain                  ...      ...         ...      ...       ...
+uncertainty           ...      ...         ...      ...       ...
+margin                ...      ...         ...      ...       ...
+ratio                 ...      ...         ...      ...       ...
+exact                 ...      ...         ...      ...       ...
 ```
 
 Cada combinação deve registrar:
@@ -485,12 +560,13 @@ mediana
 desvio-padrão
 ```
 
-Esse backtest deve responder separadamente:
+Perguntas que esse backtest deve responder:
 
 ```text
 qual allocator funciona melhor?
-qual second-mark selector funciona melhor?
-qual combinação dos dois produz mais 13+?
+qual SecondMarkSelector funciona melhor?
+qual combinação produz mais 13+?
+o ganho vem do allocator ou da segunda marcação?
 ```
 
 ---
@@ -517,7 +593,7 @@ Flamengo mandante  → incluir 1
 Flamengo visitante → incluir 2
 ```
 
-As constraints devem continuar valendo em treino, backtest e previsão final.
+As constraints devem valer em treino, backtest e previsão final.
 
 ---
 
@@ -535,7 +611,7 @@ Esse valor é experimental e deve ser otimizado apenas com validação walk-forw
 
 ---
 
-# Estratégias atualmente implementadas
+# Estratégias atuais de alocação dos duplos
 
 ```text
 gain
@@ -593,26 +669,18 @@ alocações dos cinco duplos e maximiza principalmente:
 P(>=13)
 ```
 
-Limitação atual:
+No baseline atual:
 
 ```text
 Seco  = Top1
 Duplo = Top1 + Top2
 ```
 
-Portanto, salvo constraints:
-
-```text
-14 marcações Top1
-5 marcações Top2
-0 marcações Top3
-```
-
 ---
 
 # Walk-forward validation
 
-A seleção de políticas é feita sem informação futura:
+A seleção é feita sem informação futura:
 
 ```text
 Concursos 1..N     → histórico disponível
@@ -678,7 +746,7 @@ estabilidade
 média
 ```
 
-`uncertainty` é selecionada porque empata em 13+ com `gain`, `ratio` e `exact`, mas apresenta melhor P12+ entre elas.
+`uncertainty` continua selecionada porque empata em 13+ com `gain`, `ratio` e `exact`, mas apresenta melhor P12+ entre elas.
 
 ---
 
@@ -689,13 +757,13 @@ P13+ empírico = concursos com 13 ou 14 / concursos testados
 P12+ empírico = concursos com 12, 13 ou 14 / concursos testados
 ```
 
-Essas medidas são diferentes das probabilidades teóricas Poisson-binomial do ticket.
-
 Resultados concurso a concurso:
 
 ```text
 output/backtest.csv
 ```
+
+Essas medidas devem permanecer separadas das probabilidades teóricas Poisson-binomial do ticket.
 
 ---
 
@@ -711,6 +779,14 @@ IC95% das diferenças entre estratégias
 IC95% do Top1 Disagreement
 IC95% do Second-Mark Disagreement
 ```
+
+Para o recovery, testar especificamente:
+
+```text
+H0: recovery win rate = 50%
+```
+
+O atual `50.20%` não deve ser interpretado como vantagem sem intervalo de confiança.
 
 Quando não houver evidência suficiente, registrar:
 
@@ -730,7 +806,7 @@ Log Loss:          0.985557
 ECE:               0.012378
 ```
 
-O ECE baixo estabelece um baseline probabilístico forte.
+O ECE baixo reforça que o baseline probabilístico é forte.
 
 Calibração aplicada futura:
 
@@ -746,9 +822,9 @@ Só manter calibração aplicada se melhorar walk-forward.
 
 # Distribution Backtest
 
-Depois de entender melhor o valor da segunda marcação, ampliar o espaço das 19 marcações.
+Somente depois de entender melhor o valor da segunda marcação, ampliar o espaço das 19 marcações.
 
-Testar distribuições como:
+Distribuições candidatas:
 
 ```text
 T1=14 | T2=5 | T3=0
@@ -767,82 +843,31 @@ Sempre respeitando:
 19 marcações
 ```
 
-Medir:
-
-```text
-N14
-N13
-N12
-N11
-N10
-P13+ empírico
-P12+ empírico
-média
-mediana
-desvio-padrão
-```
-
 ---
 
 # FullMarkingOptimizer
 
 O FullMarkingOptimizer só deve entrar depois de validar onde existe sinal incremental.
 
-Primeira expansão:
-
-```text
-Seco:  T1
-Duplo: T1T2 | T1T3
-```
-
-Somente depois, se houver evidência forte, abrir:
+Espaço futuro:
 
 ```text
 Seco:  T1 | T2 | T3
 Duplo: T1T2 | T1T3 | T2T3
 ```
 
-O histórico só recebe peso se demonstrar ganho incremental fora da amostra.
-
----
-
-# Similaridade histórica / KNN
-
-Criar futuramente `similarity_knn` usando apenas informação pré-jogo.
-
-Features candidatas:
+Primeiro validar:
 
 ```text
-média p(Top1)
-média p(Top2)
-média p(Top3)
-desvio p(Top1)
-entropia média
-margem média Top1-Top2
-número de favoritos fortes
-número de jogos equilibrados
+T1T2 vs T1T3
 ```
 
-O KNN pode ser útil principalmente para estimar recuperação Top2/Top3 em concursos probabilisticamente semelhantes.
-
----
-
-# Estabilidade temporal
-
-Medir desempenho em terços do histórico e janelas móveis.
-
-Registrar:
+Somente depois considerar:
 
 ```text
-P13+ por período
-P12+ por período
-Top1 accuracy
-Top1 disagreement win rate
-Second-Mark disagreement win rate
-recovery_top3 usage rate
-média por período
-pior janela
-melhor janela
+T2T3
+Seco T2
+Seco T3
 ```
 
 ---
@@ -856,31 +881,29 @@ p_top1
 p_top2
 p_top3
 margin_top1_top2
-margin_top2_top3
+gap_top2_top3
 entropy
-p_top1_meta
-top1_meta_delta
 recovery_top2
 recovery_top3
 recovery_advantage
-second_mark_baseline
-second_mark_recovery
-second_mark_final
-second_mark_disagreement_flag
-double_value_top2
-double_value_top3
-double_value_alpha
+second_mark_selector
+second_mark_choice
+second_mark_threshold
+second_mark_disagreement
 ```
 
 Agregados:
 
 ```text
-Top1 baseline Brier
-Top1 meta Brier
-Top1 disagreement win rate
-Second-Mark disagreement win rate
-T1T2 usage rate
-T1T3 usage rate
+Top1 baseline accuracy
+Top1 disagreement win rates
+Second-Mark disagreement cases
+Top2 baseline wins
+Recovery wins
+Recovery win rate
+Recovery win rate por threshold
+Recovery win rate por gap23
+Recovery win rate por faixa de p(top1)
 P13+
 P12+
 IC95%
@@ -915,6 +938,8 @@ loteca-ML-9s-5d-0t/
 
 # Execução
 
+No PowerShell:
+
 ```powershell
 python main.py
 ```
@@ -943,45 +968,41 @@ python -m unittest discover -v
 - [x] backtest 10–14;
 - [x] `P13+` e `P12+` empíricos;
 - [x] `output/backtest.csv`;
-- [x] Disagreement Test contra `p(Top1)`;
+- [x] Top1 Disagreement Test;
 - [x] `top1_residual`;
 - [x] `top1_lift`;
 - [x] `top1_reliability`;
 - [x] `p(top1_meta)`;
-- [x] disagreement por intensidade;
-- [x] disagreement por faixa de `p(Top1)`;
-- [x] evidência de que as quatro correções atuais não superam `p(Top1)`.
-- [x] `error_recovery_score` Top2/Top3 regularizado e sem vazamento;
-- [x] separação `DoubleAllocator` × `SecondMarkSelector`;
-- [x] Second-Mark Disagreement Test walk-forward;
-- [x] telemetria de recovery e segunda marca no palpite final;
+- [x] evidência de que as correções testadas não superam o Top1;
+- [x] `error_recovery_score` inicial;
+- [x] `Second-Mark Disagreement Test`;
+- [x] resultado inicial de recovery = `50.20%`;
+- [x] manutenção de `top2_baseline` como seletor final.
 
 ## Próximas prioridades — ordem prática
 
-1. [ ] validar `p(top1_meta)` com refit completo e features reduzidas;
-2. [ ] congelar formalmente como benchmark correções Top1 que permaneçam <=50%;
-3. [x] implementar `error_recovery_score` para Top2 e Top3;
-4. [x] implementar `SecondMarkSelector` separado do `DoubleAllocator`;
-5. [ ] comparar `T1T2` vs `T1T3` em walk-forward;
-6. [x] implementar Second-Mark Disagreement Test;
-7. [ ] segmentar Second-Mark Disagreement por intensidade;
-8. [ ] segmentar Second-Mark Disagreement por faixa de `p(Top1)`;
-9. [ ] bootstrap + IC95% da segunda marcação;
-10. [ ] implementar `double_value_score`;
-11. [ ] otimizar `alpha` por walk-forward;
-12. [ ] otimizar threshold para troca `T2 → T3`;
-13. [ ] implementar backtest matricial `Allocator × SecondMarkSelector`;
-14. [ ] medir impacto de recovery sobre P13+/P12+;
-15. [ ] medir estabilidade temporal;
-16. [ ] implementar `distribution_backtest` Top1/Top2/Top3;
-17. [ ] implementar FullMarkingOptimizer inicialmente com T1T2/T1T3;
-18. [ ] avaliar T2T3 e secos Top2/Top3 somente se houver evidência;
-19. [ ] implementar KNN por similaridade;
-20. [ ] implementar calibração aplicada;
-21. [ ] testar `historical_13plus_score` como métrica complementar;
-22. [ ] adicionar baseline aleatório;
-23. [ ] remover/substituir desempate posicional arbitrário do `exact`;
-24. [ ] otimizar o limiar do Palmeiras.
+1. [ ] implementar `recovery_advantage` explicitamente;
+2. [ ] testar thresholds `T2 → T3` em walk-forward;
+3. [ ] segmentar por `gap_23 = p(Top2)-p(Top3)`;
+4. [ ] segmentar recovery por faixa de `p(Top1)`;
+5. [ ] bootstrap + IC95% do Second-Mark Disagreement;
+6. [ ] medir estabilidade temporal do recovery;
+7. [ ] ampliar contexto de recovery incrementalmente;
+8. [ ] implementar `second_mark_meta`;
+9. [ ] implementar `double_value_score`;
+10. [ ] criar backtest matricial `Allocator × SecondMarkSelector`;
+11. [ ] medir impacto de cada seletor em P13+/P12+;
+12. [ ] otimizar threshold final de troca T2→T3;
+13. [ ] validar definitivamente `p(top1_meta)` com refit completo/features reduzidas;
+14. [ ] implementar `distribution_backtest` Top1/Top2/Top3;
+15. [ ] implementar FullMarkingOptimizer;
+16. [ ] avaliar T2T3 e secos Top2/Top3 somente com evidência forte;
+17. [ ] implementar KNN por similaridade;
+18. [ ] implementar calibração aplicada;
+19. [ ] testar `historical_13plus_score` como métrica complementar;
+20. [ ] adicionar baseline aleatório;
+21. [ ] remover/substituir desempate posicional arbitrário do `exact`;
+22. [ ] otimizar o limiar do Palmeiras.
 
 ---
 
@@ -989,7 +1010,7 @@ python -m unittest discover -v
 
 A régua atual é:
 
-> **preservar o que `p(Top1)` já faz bem e usar o histórico principalmente para melhorar as cinco marcações adicionais.**
+> **preservar o que `p(Top1)` já faz bem e usar o histórico apenas onde ele demonstrar valor incremental.**
 
 Para o Top1:
 
@@ -998,23 +1019,21 @@ superar p(Top1) fora da amostra
 ↓
 vencer nos casos de discordância
 ↓
-melhorar Brier
-↓
 resistir a bootstrap
 ```
 
 Para a segunda marcação:
 
 ```text
-recuperar mais erros do Top1 que Top2 puro
+superar Top2 nos casos de discordância
 ↓
-vencer Second-Mark Disagreement
+mostrar vantagem seletiva por threshold/contexto
 ↓
 melhorar P13+ / P12+
 ↓
 manter estabilidade temporal
 ↓
-resistir a bootstrap
+resistir a IC95% / bootstrap
 ```
 
 A unidade final de avaliação continua sendo o ticket completo de 19 marcações.
@@ -1024,21 +1043,17 @@ A unidade final de avaliação continua sendo o ticket completo de 19 marcaçõe
 # Princípio geral
 
 ```text
-p(Top1) baseline preservado
+p(Top1) baseline
       +
 DoubleAllocator
       +
 SecondMarkSelector
       +
-Error Recovery Score
-      +
-T1T2 vs T1T3
+Recovery seletivo validado
       +
 Validação walk-forward
       +
 Incerteza estatística
-      +
-Distribution Backtest
       +
 Constraints
       +
