@@ -1,55 +1,57 @@
 # Loteca ML — Estratégia 9 Secos / 5 Duplos / 0 Triplos
 
-Projeto de Machine Learning voltado à geração de **um único palpite final da Loteca**, com otimização baseada no histórico de concursos e foco em **maximizar a probabilidade de atingir pelo menos 13 acertos**, respeitando restrições rígidas da estratégia.
+Projeto de Machine Learning voltado à geração de **um único palpite final da Loteca**, com foco em **maximizar a capacidade de atingir 13 ou 14 acertos**, respeitando a estrutura fixa de:
 
-## Objetivo
+- **9 secos**;
+- **5 duplos**;
+- **0 triplos**;
+- **19 marcações** no total.
 
-A estratégia utiliza os históricos disponíveis em:
+O projeto combina probabilidades por partida, ranking Top1/Top2/Top3, backtesting histórico, constraints e otimização do ticket completo.
+
+---
+
+# Objetivo
+
+A base histórica é lida a partir de:
 
 ```text
 data/concursos_anteriores.csv
 ```
 
-para estimar probabilidades, ordenar os resultados possíveis de cada partida e construir uma aposta final com:
-
-- **9 secos**;
-- **5 duplos**;
-- **0 triplos**;
-- total de **19 marcações**.
-
-O sistema deve produzir apenas **um palpite final por concurso**.
-
----
-
-## Probabilidades por partida
-
-Para cada jogo, o modelo deve gerar as probabilidades:
-
-- `p(1)` — vitória do mandante;
-- `p(X)` — empate;
-- `p(2)` — vitória do visitante.
-
-Exemplo:
+O próximo concurso é lido de:
 
 ```text
-p(1) = 0.52
-p(X) = 0.28
-p(2) = 0.20
+data/proximo_concurso.csv
+```
+
+Para cada partida são utilizadas as probabilidades:
+
+```text
+p(1)  = vitória do mandante
+p(X)  = empate
+p(2)  = vitória do visitante
+```
+
+Essas probabilidades são normalizadas para que:
+
+```text
+p(1) + p(X) + p(2) = 1
 ```
 
 ---
 
-## Ranking probabilístico: Top1 / Top2 / Top3
+# Ranking probabilístico
 
-As três probabilidades são ordenadas da maior para a menor:
+Os três resultados são ordenados da maior para a menor probabilidade:
 
-- `p(top1)` — maior probabilidade;
-- `p(top2)` — segunda maior probabilidade;
-- `p(top3)` — menor probabilidade.
+```text
+Top1 = resultado mais provável
+Top2 = segundo resultado mais provável
+Top3 = resultado menos provável
+```
 
-### Critério de desempate
-
-Quando duas ou mais probabilidades forem iguais, usar a seguinte prioridade:
+Em caso de empate probabilístico, é utilizado o critério:
 
 ```text
 1 > 2 > X
@@ -61,49 +63,29 @@ Exemplo:
 p(1) = 0.40
 p(X) = 0.20
 p(2) = 0.40
-```
 
-Ranking:
-
-```text
 Top1 = 1
 Top2 = 2
 Top3 = X
 ```
 
----
-
-## One-Hot Encoding do resultado real
-
-O resultado real de cada partida pode ser representado em relação ao ranking probabilístico por:
-
-- `top1_hit`;
-- `top2_hit`;
-- `top3_hit`.
-
-Exatamente uma dessas variáveis recebe valor `1`.
-
-Exemplo:
-
-Se o resultado real correspondeu ao `Top2`:
+O resultado real histórico pode ser representado por:
 
 ```text
-top1_hit = 0
-top2_hit = 1
-top3_hit = 0
+top1_hit
+top2_hit
+top3_hit
 ```
 
-Essa representação permite medir historicamente quantas vezes o resultado real apareceu em cada posição do ranking probabilístico.
+permitindo medir com que frequência o resultado real ocupou cada posição do ranking.
 
 ---
 
 # Hard Constraints
 
-As restrições abaixo são obrigatórias e não podem ser violadas pela otimização.
+## Estrutura fixa
 
-## 1. Estrutura fixa da aposta
-
-Gerar exatamente:
+Todo ticket deve conter exatamente:
 
 ```text
 9 secos
@@ -111,82 +93,61 @@ Gerar exatamente:
 0 triplos
 ```
 
-Como cada seco utiliza 1 marcação e cada duplo utiliza 2:
+Total:
 
 ```text
 9 × 1 + 5 × 2 = 19 marcações
 ```
 
-## 2. FLAMENGO/RJ
+## Flamengo
 
-Quando o **FLAMENGO/RJ** participar do concurso, a aposta deve obrigatoriamente conter o resultado correspondente à sua vitória.
+Quando o **FLAMENGO/RJ** participar do concurso, sua vitória deve obrigatoriamente estar coberta:
 
-Isso significa:
+```text
+Flamengo mandante  → incluir 1
+Flamengo visitante → incluir 2
+```
 
-- Flamengo como mandante → incluir `1`;
-- Flamengo como visitante → incluir `2`.
-
-A vitória pode estar presente em um seco ou em um duplo, desde que esteja coberta pela aposta.
+A vitória pode aparecer como seco ou dentro de um duplo.
 
 ---
 
 # Soft Constraints
 
-As regras abaixo devem influenciar a otimização, mas podem ser flexibilizadas quando entrarem em conflito com critérios de maior importância.
+## Palmeiras
 
-## 1. Concentração de Top1
+Favorecer, quando o custo probabilístico for pequeno, soluções que excluam a vitória do **PALMEIRAS/SP**.
 
-Favorecer ordenações que:
+Na implementação atual, a substituição de um seco vencedor do Palmeiras ocorre somente quando a perda de probabilidade para a melhor alternativa é de, no máximo:
 
-- antecipem resultados `Top1`;
-- concentrem `Top1` principalmente nas **9 primeiras posições**;
-- produzam sequências longas de Top1;
-- reduzam fragmentação entre Top1, Top2 e Top3.
+```text
+0.03
+```
 
-Entre soluções de qualidade semelhante, deve ser preferida aquela cuja estrutura apresente maior concentração dos resultados mais prováveis.
+Esse valor deve ser tratado como parâmetro experimental e futuramente validado por backtest walk-forward.
 
-## 2. PALMEIRAS/SP
+## Concentração de Top1
 
-Favorecer soluções que excluam a vitória do **PALMEIRAS/SP**, priorizando:
+A ideia original de concentrar Top1 nas primeiras posições passa a ser tratada como **hipótese histórica**, e não como vantagem presumida.
 
-- empate; ou
-- derrota do Palmeiras.
+Devem ser avaliados historicamente:
 
-Essa preferência somente deve ser aplicada quando não comprometer significativamente a qualidade global da aposta.
+```text
+Top1_hit por posição J01..J14
+maior run consecutiva de Top1
+número de runs
+número de transições Top1↔Top2↔Top3
+fragmentation_score
+concentração de Top1 nas primeiras N posições
+```
 
-Na implementação atual, a substituição de um seco vencedor do Palmeiras somente ocorre quando a perda de probabilidade para a melhor alternativa é de, no máximo, `0.03`.
-
-Esse limiar é uma **Soft Constraint** e deverá futuramente ser validado e, idealmente, otimizado por backtest.
+A preferência por runs longas e baixa fragmentação só deve permanecer se demonstrar associação consistente com 13+ fora da amostra.
 
 ---
 
-# Estratégia atual de geração da aposta
+# Estratégias atualmente implementadas
 
-O fluxo atual é:
-
-```text
-Dados históricos
-      ↓
-Leitura e normalização
-      ↓
-p(1), p(X), p(2)
-      ↓
-Ranking Top1 / Top2 / Top3
-      ↓
-Backtest de políticas de alocação dos 5 duplos
-      ↓
-Seleção da melhor política histórica
-      ↓
-Construção de 9 secos + 5 duplos
-      ↓
-Aplicação das constraints
-      ↓
-Cálculo de P(>=13)
-      ↓
-Palpite final
-```
-
-As estratégias de alocação atualmente comparadas são:
+As políticas atuais para escolher os cinco jogos que recebem duplo são:
 
 ```text
 gain
@@ -196,40 +157,104 @@ ratio
 exact
 ```
 
-Cada política atribui um score às 14 partidas e escolhe os 5 jogos de maior prioridade para receber duplo.
+## gain
 
-`exact` avalia exaustivamente as 2.002 combinações de cinco duplos e maximiza
-`P(>=13)`, usando `P(14)`, acertos esperados e concentração nos primeiros jogos
-como desempates determinísticos. As demais estratégias permanecem como benchmarks.
+Prioriza maior:
 
-### Critério atual de seleção da estratégia
+```text
+p(Top2)
+```
 
-A política vencedora é escolhida priorizando:
+## uncertainty
 
-1. maior número histórico de concursos com **13 ou 14 acertos**;
-2. maior número de **14 acertos**;
-3. maior total agregado de acertos;
-4. ordem fixa das políticas como último desempate.
+Prioriza maior:
+
+```text
+1 - p(Top1)
+```
+
+## margin
+
+Prioriza menor separação entre Top1 e Top2:
+
+```text
+1 - (p(Top1) - p(Top2))
+```
+
+## ratio
+
+Prioriza maior:
+
+```text
+p(Top2) / p(Top1)
+```
+
+## exact
+
+Avalia exaustivamente:
+
+```text
+C(14,5) = 2.002
+```
+
+formas de escolher quais cinco partidas recebem duplo.
+
+Para cada combinação calcula:
+
+```text
+P(14)
+P(13)
+P(>=13)
+E[acertos]
+```
+
+O objetivo principal é:
+
+```text
+argmax P(>=13)
+```
+
+com desempates por `P(14)`, acertos esperados e critério determinístico.
+
+### Limitação atual do exact
+
+O `exact` atual otimiza **quais cinco jogos recebem duplo**, mas mantém estruturalmente:
+
+```text
+Seco  = Top1
+Duplo = Top1 + Top2
+```
+
+Portanto, salvo constraints, a distribuição implícita continua sendo:
+
+```text
+14 marcações Top1
+5 marcações Top2
+0 marcações Top3
+```
+
+A próxima evolução importante é permitir que a própria distribuição Top1/Top2/Top3 seja otimizada.
 
 ---
 
 # Estado atual do backtest
 
-Com a base histórica atual, foram avaliados **445 concursos**.
+Com a base atual são avaliados **445 concursos**.
 
-Exemplo de execução:
+Exemplo recente:
 
 ```text
 [TRAIN] 445 concursos; Top hits: [0.517817, 0.265329, 0.216854]
-[BACKTEST] {
-  'gain':        {'14': 0, '13': 7, 'hits': 3900},
-  'uncertainty': {'14': 0, '13': 8, 'hits': 3888},
-  'margin':      {'14': 0, '13': 7, 'hits': 3892},
-  'ratio':       {'14': 0, '13': 8, 'hits': 3886}
-}
+
+[BACKTEST]
+gain         → 14: 0 | 13: 7 | hits: 3898
+uncertainty  → 14: 0 | 13: 8 | hits: 3887
+margin       → 14: 0 | 13: 7 | hits: 3891
+ratio        → 14: 0 | 13: 8 | hits: 3885
+exact        → 14: 0 | 13: 8 | hits: 3882
 ```
 
-Na amostra atual:
+Frequência histórica do resultado real no ranking:
 
 ```text
 Top1: 51.7817%
@@ -237,98 +262,29 @@ Top2: 26.5329%
 Top3: 21.6854%
 ```
 
-Esses valores descrevem a posição ocupada pelo resultado real no ranking probabilístico histórico.
-
-> Importante: os números acima representam o estado atual da base e podem mudar quando novos concursos forem adicionados.
+Esses números descrevem a base atual e podem mudar com a inclusão de novos concursos.
 
 ---
 
-# Limitação importante da implementação atual
+# Métricas probabilísticas do ticket
 
-Atualmente, o backtest histórico avalia as políticas por meio da construção básica do ticket, enquanto as regras específicas de Flamengo e Palmeiras são aplicadas posteriormente na geração do palpite final.
+Para cada jogo é calculada a probabilidade coberta pela marcação.
 
-Isso significa que o backtest e a execução final ainda não percorrem exatamente o mesmo pipeline.
-
-Uma das prioridades do projeto é criar uma função única de construção de ticket com constraints, utilizada tanto no backtest quanto na previsão futura.
-
-Fluxo desejado:
+## Seco
 
 ```text
-                 ┌──────────── Backtest histórico
-                 │
-build_ticket() ──┤
-+ constraints    │
-                 └──────────── Próximo concurso
+q(i) = P(resultado marcado)
 ```
 
-Assim, toda estratégia será avaliada historicamente exatamente da mesma forma como será utilizada no concurso futuro.
-
----
-
-# Otimização exata dos cinco duplos — melhoria prioritária
-
-A estratégia atual utiliza heurísticas para selecionar os cinco jogos que receberão duplo.
-
-Entretanto, escolher exatamente 5 partidas entre 14 produz apenas:
-
-```text
-C(14,5) = 2.002 combinações
-```
-
-Esse espaço de busca é suficientemente pequeno para permitir **otimização exata**.
-
-A evolução prioritária consiste em avaliar todas as 2.002 combinações possíveis de cinco duplos.
-
-Para cada candidato:
-
-```text
-9 secos + 5 duplos
-        ↓
-probabilidade de cobertura por jogo
-        ↓
-P(14)
-P(13)
-P(>=13)
-E[acertos]
-        ↓
-Hard Constraints
-        ↓
-Soft Constraints
-        ↓
-score final
-```
-
-O objetivo principal será:
-
-```text
-argmax P(>=13)
-```
-
-com critérios secundários para desempate.
-
-Esse otimizador exato deverá ser comparado diretamente com as políticas heurísticas atuais.
-
----
-
-# Probabilidade de 13 e 14 acertos
-
-A implementação atual calcula a probabilidade de pelo menos 13 acertos utilizando uma distribuição **Poisson-binomial**, assumindo independência entre os jogos.
-
-Para cada partida é calculada a probabilidade coberta pela aposta:
-
-### Seco
-
-```text
-q(i) = P(resultado escolhido)
-```
-
-### Duplo
+## Duplo
 
 ```text
 q(i) = P(resultado A) + P(resultado B)
 ```
 
-A evolução da telemetria deverá exibir separadamente:
+A distribuição de acertos é tratada como Poisson-binomial, assumindo independência entre os 14 jogos.
+
+A telemetria atual exibe:
 
 ```text
 P(14)
@@ -337,68 +293,317 @@ P(>=13)
 E[acertos]
 ```
 
-Exemplo desejado:
+Exemplo:
 
 ```text
-[METRIC]
-  P(14):       0.012345%
-  P(13):       0.437836%
-  P(>=13):     0.450181%
-  E[acertos]:  10.42
+[METRIC] P(14): 0.036926%
+[METRIC] P(13): 0.413255%
+[METRIC] P(>=13): 0.450181%
+[METRIC] E[acertos]: 8.1436
 ```
 
-A hipótese de independência deverá permanecer explicitamente documentada enquanto for utilizada.
+A hipótese de independência deve permanecer explicitamente documentada enquanto for utilizada.
 
 ---
 
 # Ganho marginal dos duplos
 
-Para tornar a decisão auditável, cada candidato a duplo deverá registrar o ganho de cobertura proporcionado pela segunda marcação.
+O ganho marginal de transformar um seco Top1 em duplo Top1+Top2 é:
+
+```text
+ganho = p(Top2)
+```
 
 Exemplo:
 
 ```text
-[JOGO 07]
-Top1: 1 = 0.358197
-Top2: 2 = 0.351464
+Top1 = 0.358197
+Top2 = 0.351464
 
-Cobertura seco:  35.8197%
-Cobertura duplo: 70.9661%
-Ganho marginal: +35.1464 p.p.
-Ranking para duplo: 1/14
+Cobertura seco  = 35.8197%
+Cobertura duplo = 70.9661%
+Ganho marginal  = +35.1464 p.p.
 ```
 
-Isso permite entender claramente por que uma partida recebeu um dos cinco duplos disponíveis.
+A saída registra também o ranking do jogo entre os 14 candidatos a duplo.
 
 ---
 
-# Roadmap de aprimoramentos
+# Nova linha prioritária — distribuição das 19 marcações
 
-## Prioridade 1 — Consistência do pipeline
+A principal evolução planejada é deixar de perguntar apenas:
 
-- [x] aplicar as mesmas Hard e Soft Constraints no backtest e na previsão;
-- [x] criar uma função única para construção do ticket final;
-- [x] garantir invariantes: 9 secos, 5 duplos, 0 triplos e 19 marcações.
+> quais cinco jogos recebem Top2?
 
-## Prioridade 2 — Otimizador exato
+para perguntar:
 
-- [x] gerar as 2.002 combinações possíveis de cinco duplos;
-- [x] calcular `P(14)`, `P(13)` e `P(>=13)` para cada combinação;
-- [x] selecionar diretamente a combinação com melhor objetivo;
-- [x] comparar o resultado com `gain`, `uncertainty`, `margin` e `ratio`.
+> como as 19 marcações devem ser distribuídas entre Top1, Top2 e Top3 para produzir mais 13+ historicamente?
 
-## Prioridade 3 — Backtest completo
+## Distribution Backtest
 
-- [ ] registrar distribuição de 10, 11, 12, 13 e 14 acertos;
-- [ ] calcular média, mediana e desvio-padrão dos acertos;
-- [ ] salvar os resultados detalhados em `output/backtest.csv`;
-- [ ] permitir investigar concurso a concurso onde duas políticas divergiram.
+Criar um módulo `distribution_backtest` que avalie distribuições viáveis, por exemplo:
 
-## Prioridade 4 — Walk-forward validation
+```text
+T1=14 | T2=5 | T3=0
+T1=13 | T2=5 | T3=1
+T1=13 | T2=4 | T3=2
+T1=12 | T2=6 | T3=1
+...
+```
 
-Evitar avaliar uma estratégia utilizando informação futura.
+Sempre respeitando:
+
+```text
+19 marcações
+9 secos
+5 duplos
+0 triplos
+```
+
+Para cada distribuição registrar:
+
+```text
+N14
+N13
+N13+
+N12
+média de acertos
+mediana
+variância / desvio-padrão
+```
+
+A distribuição historicamente vencedora deve ser validada fora da amostra.
+
+---
+
+# Duplos flexíveis
+
+A evolução do otimizador deve permitir:
+
+```text
+Top1 + Top2
+Top1 + Top3
+Top2 + Top3
+```
+
+em vez de obrigar todo duplo a ser Top1+Top2.
+
+Isso permitirá testar empiricamente se sacrificar uma marcação Top1 ou Top2 em favor de Top3 aumenta a ocorrência de 13+.
+
+---
+
+# Secos alternativos
+
+Também poderá ser permitido, de forma controlada e historicamente validada:
+
+```text
+Seco Top1
+Seco Top2
+Seco Top3
+```
+
+Top2 ou Top3 secos não devem ser utilizados por heurística subjetiva; devem entrar apenas quando uma estratégia treinada fora da amostra demonstrar vantagem.
+
+---
+
+# FullMarkingOptimizer
+
+A evolução natural do `exact` é um otimizador completo das 19 marcações.
 
 Fluxo desejado:
+
+```text
+14 jogos
+   ↓
+Opções por jogo
+   ↓
+Seco:  T1 | T2 | T3
+Duplo: T1T2 | T1T3 | T2T3
+   ↓
+Hard Constraints
+   ↓
+9 secos + 5 duplos
+   ↓
+Score histórico / probabilístico
+   ↓
+Melhor ticket
+```
+
+Três versões devem ser comparadas:
+
+```text
+historical_exact
+probability_exact
+hybrid_exact
+```
+
+## historical_exact
+
+Maximiza empiricamente o desempenho histórico para 13+.
+
+## probability_exact
+
+Maximiza `P(>=13)` usando as probabilidades do concurso atual.
+
+## hybrid_exact
+
+Combina evidência histórica e probabilidades atuais.
+
+---
+
+# Distribuição histórica global
+
+Baseline simples:
+
+1. testar todas as distribuições viáveis no histórico;
+2. escolher a que mais produziu 13/14;
+3. aplicar essa distribuição aos concursos futuros.
+
+É útil como benchmark, mas pode sofrer overfitting e não se adaptar ao perfil probabilístico do próximo concurso.
+
+---
+
+# Distribuição histórica por posição
+
+Construir uma matriz:
+
+```text
+          Top1    Top2    Top3
+J01        ...     ...     ...
+J02        ...     ...     ...
+...
+J14        ...     ...     ...
+```
+
+Para cada posição medir:
+
+```text
+Top1_hit
+Top2_hit
+Top3_hit
+```
+
+Isso permite testar se determinadas posições históricas são mais adequadas para:
+
+```text
+seco Top1
+seco Top2
+duplo T1T2
+duplo T1T3
+duplo T2T3
+```
+
+Qualquer viés posicional deve ser validado por walk-forward.
+
+---
+
+# Distribuição histórica por similaridade
+
+Uma alternativa adaptativa é escolher a distribuição usando apenas concursos históricos probabilisticamente semelhantes ao próximo.
+
+## Perfil do concurso
+
+Características possíveis:
+
+```text
+média p(Top1)
+média p(Top2)
+média p(Top3)
+desvio de p(Top1)
+entropia média
+margem média Top1-Top2
+número de favoritos > 50%
+número de jogos muito equilibrados
+```
+
+## KNN histórico
+
+Fluxo:
+
+```text
+Próximo concurso
+       ↓
+Perfil probabilístico
+       ↓
+K concursos históricos mais semelhantes
+       ↓
+Backtest das distribuições nesses K concursos
+       ↓
+Distribuição com mais 13+
+```
+
+A similaridade deve utilizar exclusivamente informações disponíveis antes do resultado real.
+
+---
+
+# Concentração histórica de Top1
+
+A regra de “concentrar Top1 nas primeiras 9 posições” deve ser substituída por experimentos verificáveis.
+
+## Alternativa 1 — Top1 por posição
+
+Calcular:
+
+```text
+Top1_hit[J01]
+Top1_hit[J02]
+...
+Top1_hit[J14]
+```
+
+## Alternativa 2 — testar diferentes cortes
+
+Comparar:
+
+```text
+Top1 nas primeiras 5
+Top1 nas primeiras 7
+Top1 nas primeiras 9
+Top1 nas primeiras 10
+Top1 nas primeiras 12
+```
+
+Sem assumir previamente que 9 é o melhor corte.
+
+## Alternativa 3 — runs
+
+Calcular por concurso:
+
+```text
+longest_top1_run
+number_of_top1_runs
+```
+
+## Alternativa 4 — fragmentação
+
+Calcular:
+
+```text
+number_of_transitions
+fragmentation_score
+```
+
+Exemplo:
+
+```text
+T1 T1 T1 T1 T2 T2 T1
+```
+
+tem menos fragmentação que:
+
+```text
+T1 T2 T1 T2 T1 T2 T1
+```
+
+Runs e fragmentação devem ser usadas apenas como critério de otimização se demonstrarem associação robusta com 13+ fora da amostra. Caso contrário, podem permanecer somente como informação de auditoria.
+
+---
+
+# Walk-forward validation
+
+Toda nova estratégia histórica deve ser validada simulando o uso real no tempo.
+
+Fluxo:
 
 ```text
 Concursos 1..N     → treinamento
@@ -408,37 +613,98 @@ Concurso N+2       → teste
 ...
 ```
 
-- [ ] implementar backtest walk-forward;
-- [ ] comparar desempenho in-sample e out-of-sample;
-- [ ] usar resultados fora da amostra para selecionar políticas e hiperparâmetros.
+Objetivos:
 
-## Prioridade 5 — Benchmarks
+- evitar vazamento temporal;
+- reduzir overfitting;
+- medir desempenho verdadeiramente prospectivo;
+- escolher políticas, distribuições e hiperparâmetros apenas com informação passada.
 
-Comparar o otimizador contra estratégias-base:
+---
+
+# Backtest completo
+
+Expandir o backtest para registrar:
 
 ```text
-5 maiores p(Top2)
-5 menores margens Top1-Top2
-5 maiores incertezas
-5 maiores razões Top2/Top1
-5 duplos aleatórios
-otimizador exato P(>=13)
+14
+13
+12
+11
+10
+<=9
 ```
 
-- [ ] criar baseline aleatório com múltiplas sementes;
-- [ ] medir ganho real sobre o acaso;
-- [ ] evitar atribuir valor a diferenças pequenas sem suporte estatístico.
+Além de:
 
-## Prioridade 6 — Incerteza estatística
+```text
+média
+mediana
+desvio-padrão
+mínimo
+máximo
+P13+ empírico
+P12+ empírico
+```
 
-- [ ] bootstrap com 1.000 ou mais reamostragens;
-- [ ] intervalos de confiança para `P(13+)` histórico;
-- [ ] comparação entre políticas considerando variabilidade;
-- [ ] evitar concluir superioridade com diferenças de apenas um concurso.
+Salvar também resultados concurso a concurso em:
 
-## Prioridade 7 — Calibração das probabilidades
+```text
+output/backtest.csv
+```
 
-Antes de aumentar a complexidade do modelo, medir a qualidade probabilística com:
+Campos sugeridos:
+
+```text
+concurso
+strategy
+distribution_id
+hits
+hit_14
+hit_13
+hit_12
+double_games
+ticket
+```
+
+---
+
+# Benchmarks
+
+Comparar qualquer novo método contra:
+
+```text
+gain
+uncertainty
+margin
+ratio
+exact
+5 duplos aleatórios
+distribuição histórica global
+```
+
+O baseline aleatório deve utilizar múltiplas sementes e muitas repetições para estimar a distribuição de desempenho por acaso.
+
+---
+
+# Incerteza estatística
+
+Diferenças pequenas no número de concursos com 13+ não devem ser interpretadas automaticamente como superioridade.
+
+Planejado:
+
+```text
+bootstrap >= 1.000 reamostragens
+intervalos de confiança
+comparação de diferenças de P13+
+estabilidade temporal
+```
+
+---
+
+# Calibração das probabilidades
+
+Como os otimizadores probabilísticos dependem diretamente de `p(1)`, `p(X)` e `p(2)`, a calibração deve ser medida por:
 
 ```text
 Log Loss
@@ -447,7 +713,7 @@ Calibration Error
 Reliability Diagram
 ```
 
-Também avaliar faixas de confiança:
+Também avaliar faixas como:
 
 ```text
 Top1 33–40%
@@ -457,51 +723,41 @@ Top1 50–60%
 Top1 >60%
 ```
 
-para verificar se as probabilidades previstas correspondem às frequências observadas.
+para comparar probabilidade prevista e frequência observada.
 
-## Prioridade 8 — Análises históricas adicionais
+---
 
-- [ ] Top1/Top2/Top3 por posição do jogo (`Jogo 01` a `Jogo 14`);
-- [ ] desempenho por faixa probabilística;
-- [ ] análise da frequência de erros simultâneos;
-- [ ] análise das distribuições de resultados dentro de cada concurso;
-- [ ] validação de qualquer padrão sempre fora da amostra.
+# Telemetria e auditoria
 
-## Prioridade 9 — Soft Constraint do Palmeiras
+A saída deve permitir reconstruir a decisão do algoritmo.
 
-O limite atual de `0.03` não deve permanecer como valor arbitrário sem validação.
-
-Testar historicamente valores como:
+Informações atuais:
 
 ```text
-0.00
-0.01
-0.02
-0.03
-0.04
-0.05
-...
-0.15
+p(1), p(X), p(2)
+Top1/Top2/Top3
+seco ou duplo
+palpite
+ganho marginal
+ranking de ganho
+constraints
+P(14)
+P(13)
+P(>=13)
+E[acertos]
 ```
 
-- [ ] transformar o limite em parâmetro configurável;
-- [ ] avaliar seu impacto em walk-forward;
-- [ ] aplicar a preferência somente quando houver evidência histórica favorável.
+Evoluções desejadas:
 
-## Prioridade 10 — Testes automatizados
-
-Adicionar testes para garantir:
-
-- [ ] exatamente 14 partidas por concurso;
-- [ ] exatamente 9 secos;
-- [ ] exatamente 5 duplos;
-- [ ] exatamente 19 marcações;
-- [ ] ausência de triplos;
-- [ ] Flamengo sempre coberto;
-- [ ] critério de empate `1 > 2 > X`;
-- [ ] probabilidades normalizadas;
-- [ ] constraints não alteram a estrutura `9/5/0`;
-- [ ] cálculo de `P(13)` e `P(14)` validado contra casos conhecidos.
+```text
+distribuição T1/T2/T3
+historical_score
+position_score
+similarity_score
+fragmentation_score
+longest_top1_run
+impacto quantitativo das constraints
+```
 
 ---
 
@@ -533,40 +789,21 @@ loteca-ML-9s-5d-0t/
 
 ---
 
-# Arquivos de dados
-
-## `data/concursos_anteriores.csv`
-
-Base histórica utilizada para:
-
-- treinamento;
-- validação;
-- backtesting;
-- cálculo das frequências de Top1, Top2 e Top3;
-- avaliação das políticas de alocação dos cinco duplos;
-- escolha da estratégia final.
-
-## `data/proximo_concurso.csv`
-
-Contém os 14 jogos do concurso que será utilizado para gerar o próximo palpite.
-
----
-
 # Formato dos CSVs
 
-Os arquivos utilizam:
+Os arquivos usam:
 
 ```text
 Delimitador: ;
 Separador decimal: ,
 ```
 
-A leitura aceita UTF-8 e também bases legadas em CP1252/Latin-1.
-
-As probabilidades lidas são normalizadas para que:
+A leitura aceita:
 
 ```text
-p(1) + p(X) + p(2) = 1
+UTF-8
+CP1252
+Latin-1
 ```
 
 ---
@@ -595,7 +832,7 @@ X2
 1X2
 ```
 
-Na estratégia principal deste projeto:
+Na estratégia principal:
 
 ```text
 Triplos = 0
@@ -603,113 +840,18 @@ Triplos = 0
 
 ---
 
-# Telemetria e auditoria no terminal
-
-O programa deve fornecer informações suficientes para compreender como cada decisão foi tomada.
-
-A saída atual permite visualizar:
-
-- probabilidades `p(1)`, `p(X)` e `p(2)`;
-- classificação Top1 / Top2 / Top3;
-- escolha entre seco e duplo;
-- política histórica selecionada;
-- Hard Constraint do Flamengo;
-- Soft Constraint do Palmeiras;
-- probabilidade estimada de pelo menos 13 acertos;
-- palpite final.
-
-Exemplo:
-
-```text
-[INFO] Concurso: 1263
-[INFO] Estratégia: 9 secos / 5 duplos / 0 triplos
-[OPT] Política histórica selecionada: uncertainty
-
-[JOGO 07] VILA NOVA-GO x FORTALEZA-CE
-  p(1): 0.358197  p(X): 0.290340  p(2): 0.351464
-  Top1/Top2/Top3: 1/2/X
-  Escolha: DUPLO 12
-
-[CONSTRAINT] PALMEIRAS jogo 9: preferência não aplicada
-[CONSTRAINT] FLAMENGO jogo 12: vitória 2 coberta
-[METRIC] Probabilidade estimada de >=13: 0.450181%
-[FINAL] 9 secos / 5 duplos / 0 triplos — 19 marcações
-```
-
-A evolução planejada da telemetria inclui:
-
-```text
-P(14)
-P(13)
-P(>=13)
-Expected hits
-Ganho marginal de cada duplo
-Ranking dos candidatos a duplo
-Impacto quantitativo das constraints
-```
-
----
-
-# `output/predictions.csv`
-
-O arquivo final registra informações suficientes para reconstruir e auditar o palpite:
-
-```text
-concurso
-jogo
-mandante
-visitante
-p_1
-p_x
-p_2
-top1_result
-top1_prob
-top2_result
-top2_prob
-top3_result
-top3_prob
-tipo_aposta
-palpite
-```
-
-A evolução planejada poderá acrescentar:
-
-```text
-covered_probability
-double_gain
-double_rank
-resultado_real
-top1_hit
-top2_hit
-top3_hit
-```
-
----
-
 # Execução
 
-O pipeline atual não requer dependências externas.
-
-Para treinar, executar o backtest das políticas e gerar o próximo palpite:
-
-```bash
-python main.py
-```
-
-Também é possível informar caminhos alternativos:
-
-```bash
-python main.py \
-  --history data/concursos_anteriores.csv \
-  --next data/proximo_concurso.csv \
-  --model models/model.json \
-  --output output/predictions.csv
-```
-
-No PowerShell/Windows, a execução padrão é:
+No PowerShell/Windows:
 
 ```powershell
 python main.py
+```
+
+Com caminhos personalizados:
+
+```powershell
+python main.py --history data/concursos_anteriores.csv --next data/proximo_concurso.csv --model models/model.json --output output/predictions.csv
 ```
 
 ---
@@ -722,17 +864,62 @@ Executar:
 python -m unittest discover -v
 ```
 
-Os testes devem evoluir junto com o otimizador para cobrir as invariantes estruturais, constraints e métricas probabilísticas.
+Testes importantes:
+
+```text
+14 partidas por concurso
+9 secos
+5 duplos
+19 marcações
+0 triplos
+Flamengo sempre coberto
+empate do ranking 1 > 2 > X
+probabilidades normalizadas
+constraints preservam 9/5/0
+P(13) e P(14) validados
+```
+
+---
+
+# Roadmap resumido
+
+## Concluído
+
+- [x] pipeline único de constraints;
+- [x] invariantes 9/5/0;
+- [x] políticas gain/uncertainty/margin/ratio;
+- [x] `exact` com 2.002 combinações;
+- [x] `P(14)`, `P(13)`, `P(>=13)` e `E[acertos]`;
+- [x] ganho marginal dos duplos.
+
+## Próximas prioridades
+
+- [ ] `distribution_backtest` Top1/Top2/Top3;
+- [ ] permitir duplos T1T3 e T2T3;
+- [ ] avaliar secos Top2/Top3;
+- [ ] matriz posição × ranking;
+- [ ] FullMarkingOptimizer;
+- [ ] `historical_exact`;
+- [ ] `probability_exact` completo;
+- [ ] `hybrid_exact`;
+- [ ] distribuição histórica por similaridade/KNN;
+- [ ] walk-forward;
+- [ ] backtest detalhado 10–14;
+- [ ] baseline aleatório;
+- [ ] bootstrap e intervalos de confiança;
+- [ ] validação de runs e fragmentação;
+- [ ] calibração probabilística;
+- [ ] otimização do limiar do Palmeiras.
 
 ---
 
 # Critério de sucesso
 
-O objetivo do projeto **não é simplesmente maximizar a acurácia individual dos palpites secos**.
+O projeto **não busca apenas acertar o resultado mais provável de cada partida**.
 
-A métrica principal deve considerar o desempenho da **aposta completa de 19 marcações**.
+A unidade de avaliação é o ticket completo de 19 marcações.
 
-Ordem conceitual de importância:
+Prioridade conceitual:
 
 ```text
 14 acertos
@@ -744,40 +931,28 @@ Ordem conceitual de importância:
 média de acertos
 ```
 
-A escolha entre duas estratégias deve considerar o desempenho do conjunto completo da aposta e não apenas a taxa de acerto do `Top1` isoladamente.
+Toda heurística deve demonstrar ganho histórico e, idealmente, fora da amostra.
 
 ---
 
 # Princípio geral
 
-O modelo fornece as probabilidades.
-
-O ranking Top1 / Top2 / Top3 organiza essas probabilidades.
-
-O histórico informa quais decisões funcionaram melhor fora da amostra.
-
-As Hard Constraints definem o espaço permitido.
-
-As Soft Constraints ajudam a desempatar soluções semelhantes.
-
-O otimizador seleciona **um único jogo final de 9 secos e 5 duplos**.
-
 ```text
-Probabilidade
-     +
+Probabilidades
+      +
 Histórico
-     +
+      +
+Distribuição Top1/Top2/Top3
+      +
 Constraints
-     +
-Backtest
-     +
-Otimização exata
-     ↓
+      +
+Backtest walk-forward
+      +
+Otimização
+      ↓
 PALPITE FINAL
 ```
 
-## Direção do projeto
-
-A prioridade é tornar a estratégia progressivamente menos dependente de heurísticas e mais diretamente alinhada ao objetivo final:
+A direção do projeto é tornar o sistema progressivamente menos dependente de regras intuitivas e mais orientado por evidência:
 
 > **maximizar, de forma auditável e validada fora da amostra, a capacidade da aposta de atingir 13 ou 14 pontos.**
