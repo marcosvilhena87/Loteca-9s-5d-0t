@@ -7,9 +7,10 @@ import json
 from pathlib import Path
 
 from scripts.common import Match, read_matches
-from scripts.train_model import (HISTORICAL_POLICIES, exact_ticket, historical_ticket,
-                                 heuristic_ticket, reliability_context, reliability_scores,
-                                 ticket_metrics_for, top1_meta_score)
+from scripts.train_model import (HISTORICAL_POLICIES, allocated_ticket, exact_ticket,
+                                 historical_ticket, heuristic_ticket, recovery_context,
+                                 recovery_scores, reliability_context, reliability_scores,
+                                 select_second_mark, ticket_metrics_for, top1_meta_score)
 
 
 def optimize(games: list[Match], policy: str,
@@ -37,7 +38,17 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
         for context in model.get("top1_reliability", {}).get("contexts", [])
     }
     meta_coefficients = model.get("top1_meta", {}).get("coefficients")
-    ticket, notes = optimize(games, model["selected_policy"], position_rates)
+    recovery_model = {
+        (context["p_top1_bin"], context["margin_bin"], context["top1_result"]): {
+            "top1_misses": context["top1_misses"],
+            "recovery_top2": context["recovery_top2"],
+            "recovery_top3": context["recovery_top3"],
+        }
+        for context in model.get("error_recovery", {}).get("contexts", [])
+    }
+    second_selector = model.get("selected_second_mark", "top2_baseline")
+    ticket, notes = allocated_ticket(games, model["selected_policy"], second_selector,
+                                     position_rates, recovery_model)
     gains = [game.probabilities[game.ranking[1]] for game in games]
     gain_ranks = {index: rank for rank, index in enumerate(
         sorted(range(14), key=lambda i: (-gains[i], i)), 1
@@ -46,6 +57,8 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
     for index, (game, selection) in enumerate(zip(games, ticket)):
         ranking = game.ranking
         historical_scores = reliability_scores(game, reliability_model)
+        recoveries = recovery_scores(game, recovery_model)
+        recovery_mark = select_second_mark(game, "recovery", recovery_model)
         context = reliability_context(game)
         p_top1_meta = (top1_meta_score(game, meta_coefficients)
                        if meta_coefficients is not None
@@ -71,6 +84,15 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
             "p_top1_meta": f"{p_top1_meta:.6f}",
             "top1_meta_delta": f"{abs(p_top1_meta - game.probabilities[ranking[0]]):.6f}",
             "reliability_context": f"p{context[0]}-m{context[1]}-{context[2]}",
+            "recovery_top2": f"{recoveries['recovery_top2']:.6f}",
+            "recovery_top3": f"{recoveries['recovery_top3']:.6f}",
+            "recovery_advantage": f"{abs(recoveries['recovery_top2'] - recoveries['recovery_top3']):.6f}",
+            "second_mark_baseline": ranking[1],
+            "second_mark_recovery": recovery_mark,
+            "second_mark_final": (next(iter(selection - {ranking[0]}), "")
+                                  if len(selection) == 2 else ""),
+            "second_mark_disagreement_flag": int(recovery_mark != ranking[1]),
+            "recovery_context": "p{}-m{}-{}".format(*recovery_context(game)),
         })
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
