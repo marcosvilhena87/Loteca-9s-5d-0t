@@ -150,7 +150,15 @@ uncertainty
 margin
 ratio
 exact
+hist_top1
+hist_top2
 ```
+
+As políticas históricas são avaliadas exclusivamente em **walk-forward**. `hist_top1`
+protege com duplos as cinco posições em que o Top1 foi menos confiável no passado;
+`hist_top2` cobre as cinco posições com maior taxa histórica de Top2. As frequências
+usam suavização Dirichlet e, em cada concurso de teste, são recalculadas somente com
+os concursos anteriores.
 
 ## gain
 
@@ -234,7 +242,8 @@ A próxima evolução importante é permitir que a própria distribuição Top1/
 
 # Estado atual do backtest
 
-Com a base atual são avaliados **445 concursos**.
+Com a base atual há **445 concursos**, dos quais 415 compõem a avaliação
+walk-forward após a janela histórica inicial de 30 concursos.
 
 Exemplo recente:
 
@@ -242,11 +251,13 @@ Exemplo recente:
 [TRAIN] 445 concursos; Top hits: [0.517817, 0.265329, 0.216854]
 
 [BACKTEST]
-gain         → 14: 0 | 13: 7 | hits: 3898
-uncertainty  → 14: 0 | 13: 8 | hits: 3887
-margin       → 14: 0 | 13: 7 | hits: 3891
-ratio        → 14: 0 | 13: 8 | hits: 3885
-exact        → 14: 0 | 13: 8 | hits: 3882
+gain         → 14: 0 | 13: 6 | hits: 3628
+uncertainty  → 14: 0 | 13: 6 | hits: 3619
+margin       → 14: 0 | 13: 5 | hits: 3621
+ratio        → 14: 0 | 13: 6 | hits: 3616
+hist_top1    → 14: 0 | 13: 5 | hits: 3554
+hist_top2    → 14: 0 | 13: 5 | hits: 3568
+exact        → 14: 0 | 13: 6 | hits: 3614
 ```
 
 Frequência histórica do resultado real no ranking:
@@ -689,6 +700,15 @@ Objetivos:
 - medir desempenho verdadeiramente prospectivo;
 - escolher políticas, distribuições, pesos e hiperparâmetros apenas com informação passada.
 
+## Implementação atual
+
+O treinamento reserva os 30 primeiros concursos como janela histórica inicial e
+avalia todos os concursos seguintes em ordem cronológica. Em cada passo, as políticas
+probabilísticas, `exact`, `hist_top1` e `hist_top2` são comparadas no mesmo concurso;
+os scores históricos são reconstruídos apenas com o prefixo já observado. O
+`model.json` registra o tamanho da janela, o número de testes fora da amostra e a
+matriz histórica final usada para gerar o próximo ticket.
+
 ---
 
 # Backtest completo
@@ -935,25 +955,25 @@ scores históricos usando apenas informação passada
 - [x] ganho marginal dos duplos;
 - [x] Brier multiclasse, Log Loss, ECE e bins de calibração;
 - [x] matriz histórica posição × ranking para auditoria.
+- [x] políticas `hist_top1` e `hist_top2` com suavização;
+- [x] seleção de políticas por backtest walk-forward sem vazamento temporal;
 
 ## Próximas prioridades
 
-1. [ ] criar políticas `hist_top1` e `hist_top2`;
-2. [ ] criar `historical_13plus_score` / `hist_13plus`;
-3. [ ] substituir o desempate posicional arbitrário do `exact` por score histórico validado ou desempate neutro;
-4. [ ] implementar `distribution_backtest` Top1/Top2/Top3;
-5. [ ] permitir duplos T1T3 e T2T3;
-6. [ ] avaliar secos Top2/Top3;
-7. [ ] implementar walk-forward;
-8. [ ] implementar distribuição/ordenação por similaridade KNN;
-9. [ ] implementar `hybrid_hist_prob` / `hybrid_exact`;
-10. [ ] implementar calibração aplicada e comparar `exact_raw` vs `exact_calibrated`;
-11. [ ] implementar FullMarkingOptimizer;
-12. [ ] expandir backtest para 10–14 e `output/backtest.csv`;
-13. [ ] adicionar baseline aleatório;
-14. [ ] bootstrap e intervalos de confiança;
-15. [ ] validar runs e fragmentação;
-16. [ ] otimizar o limiar do Palmeiras.
+1. [ ] criar `historical_13plus_score` / `hist_13plus`;
+2. [ ] substituir o desempate posicional arbitrário do `exact` por score histórico validado ou desempate neutro;
+3. [ ] implementar `distribution_backtest` Top1/Top2/Top3;
+4. [ ] permitir duplos T1T3 e T2T3;
+5. [ ] avaliar secos Top2/Top3;
+6. [ ] implementar distribuição/ordenação por similaridade KNN;
+7. [ ] implementar `hybrid_hist_prob` / `hybrid_exact`;
+8. [ ] implementar calibração aplicada e comparar `exact_raw` vs `exact_calibrated`;
+9. [ ] implementar FullMarkingOptimizer;
+10. [ ] expandir backtest para 10–14 e `output/backtest.csv`;
+11. [ ] adicionar baseline aleatório;
+12. [ ] bootstrap e intervalos de confiança;
+13. [ ] validar runs e fragmentação;
+14. [ ] otimizar o limiar do Palmeiras.
 
 ---
 

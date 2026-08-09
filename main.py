@@ -16,6 +16,8 @@ def main() -> None:
     model = train(args.history, args.model)
     print(f"[TRAIN] {model['contests_evaluated']} concursos; Top hits: {model['rank_hit_rates']}")
     print(f"[BACKTEST] {model['policy_backtest']}")
+    print(f"[WALK-FORWARD] {model['walk_forward']['test_contests']} concursos de teste; "
+          f"janela inicial: {model['walk_forward']['minimum_history']}")
     diagnostics = model["probability_diagnostics"]
     print(f"[CALIBRATION] Brier: {diagnostics['multiclass_brier']:.6f} | "
           f"Log Loss: {diagnostics['log_loss']:.6f} | ECE: {diagnostics['ece']:.6f}")

@@ -7,19 +7,28 @@ import json
 from pathlib import Path
 
 from scripts.common import Match, read_matches
-from scripts.train_model import exact_ticket, heuristic_ticket, ticket_metrics_for
+from scripts.train_model import (HISTORICAL_POLICIES, exact_ticket, historical_ticket,
+                                 heuristic_ticket, ticket_metrics_for)
 
 
-def optimize(games: list[Match], policy: str) -> tuple[list[set[str]], list[str]]:
+def optimize(games: list[Match], policy: str,
+             position_rates: list[list[float]] | None = None) -> tuple[list[set[str]], list[str]]:
     if len(games) != 14:
         raise ValueError("o próximo concurso deve conter exatamente 14 jogos")
-    return exact_ticket(games) if policy == "exact" else heuristic_ticket(games, policy)
+    if policy == "exact":
+        return exact_ticket(games)
+    if policy in HISTORICAL_POLICIES:
+        if position_rates is None:
+            raise ValueError("modelo não contém scores históricos por posição")
+        return historical_ticket(games, policy, position_rates)
+    return heuristic_ticket(games, policy)
 
 
 def predict(input_path: str, model_path: str, output_path: str, verbose: bool = True) -> list[dict[str, object]]:
     games = sorted(read_matches(input_path), key=lambda game: game.jogo)
     model = json.loads(Path(model_path).read_text(encoding="utf-8"))
-    ticket, notes = optimize(games, model["selected_policy"])
+    position_rates = model.get("position_rank_hit_rates")
+    ticket, notes = optimize(games, model["selected_policy"], position_rates)
     gains = [game.probabilities[game.ranking[1]] for game in games]
     gain_ranks = {index: rank for rank, index in enumerate(
         sorted(range(14), key=lambda i: (-gains[i], i)), 1
@@ -38,6 +47,10 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
             "covered_probability": f"{sum(game.probabilities[r] for r in selection):.6f}",
             "double_gain": f"{gains[index]:.6f}" if len(selection) == 2 else "",
             "double_rank": gain_ranks[index] if len(selection) == 2 else "",
+            "score_hist_top1": (f"{position_rates[index][0]:.6f}"
+                                if position_rates else ""),
+            "score_hist_top2": (f"{position_rates[index][1]:.6f}"
+                                if position_rates else ""),
         })
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
