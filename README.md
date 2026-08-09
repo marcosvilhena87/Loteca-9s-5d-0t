@@ -981,11 +981,11 @@ python -m unittest discover -v
 
 ## Próximas prioridades — ordem prática
 
-1. [ ] implementar `recovery_advantage` explicitamente;
-2. [ ] testar thresholds `T2 → T3` em walk-forward;
-3. [ ] segmentar por `gap_23 = p(Top2)-p(Top3)`;
-4. [ ] segmentar recovery por faixa de `p(Top1)`;
-5. [ ] bootstrap + IC95% do Second-Mark Disagreement;
+1. [x] implementar `recovery_advantage` explicitamente;
+2. [x] testar thresholds `T2 → T3` em walk-forward;
+3. [x] segmentar por `gap_23 = p(Top2)-p(Top3)`;
+4. [x] segmentar recovery por faixa de `p(Top1)`;
+5. [x] bootstrap (2.000 reamostragens) + IC95% do Second-Mark Disagreement;
 6. [ ] medir estabilidade temporal do recovery;
 7. [ ] ampliar contexto de recovery incrementalmente;
 8. [ ] implementar `second_mark_meta`;

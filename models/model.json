@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "selected_policy": "uncertainty",
   "selected_second_mark": "top2_baseline",
   "contests_evaluated": 445,
@@ -653,10 +653,204 @@
       "top2_baseline_wins": 368,
       "recovery_wins": 371,
       "neutral": 0,
+      "recovery_win_rate": 0.50202977,
+      "recovery_win_rate_ci95": [
+        0.46820027,
+        0.53856563
+      ],
+      "bootstrap_resamples": 2000,
+      "statistically_distinguishable_from_50pct": false,
       "top1_misses": 2815,
       "recovery_top3_uses": 739,
-      "recovery_win_rate": 0.50202977,
       "recovery_top3_usage_rate": 0.2625222,
+      "threshold_results": {
+        "0.00": {
+          "cases": 739,
+          "top2_baseline_wins": 368,
+          "recovery_wins": 371,
+          "neutral": 0,
+          "recovery_win_rate": 0.50202977,
+          "recovery_win_rate_ci95": [
+            0.46820027,
+            0.53856563
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "0.02": {
+          "cases": 669,
+          "top2_baseline_wins": 338,
+          "recovery_wins": 331,
+          "neutral": 0,
+          "recovery_win_rate": 0.49476831,
+          "recovery_win_rate_ci95": [
+            0.4573991,
+            0.53363229
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "0.05": {
+          "cases": 549,
+          "top2_baseline_wins": 262,
+          "recovery_wins": 287,
+          "neutral": 0,
+          "recovery_win_rate": 0.52276867,
+          "recovery_win_rate_ci95": [
+            0.4845173,
+            0.56466302
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "0.10": {
+          "cases": 470,
+          "top2_baseline_wins": 222,
+          "recovery_wins": 248,
+          "neutral": 0,
+          "recovery_win_rate": 0.52765957,
+          "recovery_win_rate_ci95": [
+            0.48297872,
+            0.57234043
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "0.15": {
+          "cases": 342,
+          "top2_baseline_wins": 161,
+          "recovery_wins": 181,
+          "neutral": 0,
+          "recovery_win_rate": 0.52923977,
+          "recovery_win_rate_ci95": [
+            0.47660819,
+            0.58187135
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        }
+      },
+      "by_gap_23": {
+        "0-2pp": {
+          "cases": 245,
+          "top2_baseline_wins": 119,
+          "recovery_wins": 126,
+          "neutral": 0,
+          "recovery_win_rate": 0.51428571,
+          "recovery_win_rate_ci95": [
+            0.44897959,
+            0.57142857
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "2-5pp": {
+          "cases": 327,
+          "top2_baseline_wins": 165,
+          "recovery_wins": 162,
+          "neutral": 0,
+          "recovery_win_rate": 0.49541284,
+          "recovery_win_rate_ci95": [
+            0.44036697,
+            0.55045872
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "5-10pp": {
+          "cases": 157,
+          "top2_baseline_wins": 78,
+          "recovery_wins": 79,
+          "neutral": 0,
+          "recovery_win_rate": 0.50318471,
+          "recovery_win_rate_ci95": [
+            0.42675159,
+            0.57961783
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "10pp+": {
+          "cases": 10,
+          "top2_baseline_wins": 6,
+          "recovery_wins": 4,
+          "neutral": 0,
+          "recovery_win_rate": 0.4,
+          "recovery_win_rate_ci95": [
+            0.1,
+            0.7
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        }
+      },
+      "by_p_top1": {
+        "33-40%": {
+          "cases": 527,
+          "top2_baseline_wins": 244,
+          "recovery_wins": 283,
+          "neutral": 0,
+          "recovery_win_rate": 0.5370019,
+          "recovery_win_rate_ci95": [
+            0.49335863,
+            0.58254269
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "40-45%": {
+          "cases": 157,
+          "top2_baseline_wins": 90,
+          "recovery_wins": 67,
+          "neutral": 0,
+          "recovery_win_rate": 0.42675159,
+          "recovery_win_rate_ci95": [
+            0.35031847,
+            0.50318471
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "45-50%": {
+          "cases": 36,
+          "top2_baseline_wins": 20,
+          "recovery_wins": 16,
+          "neutral": 0,
+          "recovery_win_rate": 0.44444444,
+          "recovery_win_rate_ci95": [
+            0.27777778,
+            0.61111111
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        },
+        "50-60%": {
+          "cases": 12,
+          "top2_baseline_wins": 10,
+          "recovery_wins": 2,
+          "neutral": 0,
+          "recovery_win_rate": 0.16666667,
+          "recovery_win_rate_ci95": [
+            0.0,
+            0.41666667
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": true
+        },
+        "60%+": {
+          "cases": 7,
+          "top2_baseline_wins": 4,
+          "recovery_wins": 3,
+          "neutral": 0,
+          "recovery_win_rate": 0.42857143,
+          "recovery_win_rate_ci95": [
+            0.0,
+            0.71428571
+          ],
+          "bootstrap_resamples": 2000,
+          "statistically_distinguishable_from_50pct": false
+        }
+      },
       "passes_disagreement_threshold": true,
       "promoted_to_ticket": false
     },

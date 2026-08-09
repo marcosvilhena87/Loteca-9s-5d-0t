@@ -11,7 +11,8 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  reliability_scores, ticket_metrics_for,
                                  top1_meta_features, top1_meta_score,
                                  top1_reliability_model, train, walk_forward_backtest,
-                                 walk_forward_reliability, walk_forward_top1_meta)
+                                 walk_forward_reliability, walk_forward_second_mark,
+                                 walk_forward_top1_meta)
 
 
 class PipelineTests(unittest.TestCase):
@@ -189,6 +190,26 @@ class PipelineTests(unittest.TestCase):
                                      recovery_model=recovery)
         self.assertEqual(sorted(map(len, ticket)), [1] * 9 + [2] * 5)
         self.assertTrue(all(pick == {"1", "2"} for pick in ticket if len(pick) == 2))
+
+    def test_threshold_recovery_requires_sufficient_signed_advantage(self):
+        game = Match(2, 1, "A", "B", {"1": .5, "X": .3, "2": .2})
+        context = recovery_context(game)
+        recovery = {context: {"recovery_top2": .46, "recovery_top3": .54}}
+        self.assertEqual(select_second_mark(game, "threshold_recovery", recovery, .05), "2")
+        self.assertEqual(select_second_mark(game, "threshold_recovery", recovery, .10), "X")
+
+    def test_second_mark_audit_reports_thresholds_segments_and_bootstrap(self):
+        contests = {}
+        for concurso in range(1, 4):
+            contests[concurso] = [Match(concurso, i + 1, "A", "B",
+                {"1": .50, "X": .30, "2": .20}, "2") for i in range(14)]
+        audit = walk_forward_second_mark(contests, minimum_history=2)
+        self.assertEqual(set(audit["threshold_results"]),
+                         {"0.00", "0.02", "0.05", "0.10", "0.15"})
+        self.assertEqual(set(audit["by_gap_23"]),
+                         {"0-2pp", "2-5pp", "5-10pp", "10pp+"})
+        self.assertEqual(audit["bootstrap_resamples"], 2000)
+        self.assertEqual(len(audit["recovery_win_rate_ci95"]), 2)
 
 
 if __name__ == "__main__":
