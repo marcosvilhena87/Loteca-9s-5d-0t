@@ -66,185 +66,63 @@ Top3: 21.6854%
 
 ---
 
-# Princípio central — p(Top1) é o baseline a ser batido
+# Princípio central — preservar o Top1 até existir evidência melhor
 
-O `p(Top1)` é a principal referência individual de acerto do projeto.
+O `p(Top1)` é o baseline individual mais forte do projeto.
 
-A pesquisa histórica não deve procurar simplesmente uma métrica diferente de `p(Top1)`. O objetivo é encontrar **informação histórica incremental** capaz de identificar quando o próprio `p(Top1)` está sistematicamente superestimado ou subestimado.
+A pesquisa histórica não deve procurar simplesmente uma métrica diferente. Uma nova métrica só deve substituir ou reordenar `p(Top1)` se demonstrar **informação incremental fora da amostra**.
 
-Pergunta central:
-
-> **Existe uma métrica histórica que reordene os jogos melhor que `p(Top1)` e demonstre essa vantagem fora da amostra?**
-
-Uma nova métrica histórica só deve entrar no otimizador se:
+Critérios mínimos:
 
 ```text
 1. superar p(Top1) em walk-forward;
-2. vencer nos casos em que sua ordenação discorda de p(Top1);
+2. vencer quando sua ordenação discorda de p(Top1);
 3. melhorar P13+ e/ou P12+ do ticket;
 4. apresentar estabilidade temporal;
-5. não depender de informação futura.
+5. não usar informação futura.
 ```
 
-Correlação histórica isolada não é suficiente.
+A evidência atual indica que pequenas correções históricas do Top1 ainda não conseguiram cumprir essa regra.
 
 ---
 
-# Nova linha prioritária — confiabilidade do Top1
+# Estado atual do Disagreement Test
 
-Em vez de substituir `p(Top1)`, o projeto deve tentar **corrigi-lo onde houver erro histórico sistemático**.
-
-## 1. top1_residual
-
-Definição conceitual:
+Foram testadas três correções históricas de confiabilidade do Top1:
 
 ```text
-top1_residual = taxa_histórica_real_de_Top1 - p(Top1)_médio
+top1_residual
+top1_lift
+top1_reliability
 ```
 
-Exemplo:
+Resultado walk-forward atual:
 
 ```text
-Perfil A
-p(Top1) médio      = 0.45
-Top1 observado     = 0.52
-residual           = +0.07
+[DISAGREEMENT] top1_residual
+3234 casos | baseline 802 x histórico 750 | neutros 1682
+historical win rate: 48.32%
 
-Perfil B
-p(Top1) médio      = 0.45
-Top1 observado     = 0.39
-residual           = -0.06
+[DISAGREEMENT] top1_lift
+3264 casos | baseline 801 x histórico 755 | neutros 1708
+historical win rate: 48.52%
+
+[DISAGREEMENT] top1_reliability
+3323 casos | baseline 821 x histórico 746 | neutros 1756
+historical win rate: 47.61%
 ```
 
-Score candidato:
+Conclusão atual:
 
-```text
-adjusted_top1_score = p(Top1) + top1_residual
-```
+> `top1_residual`, `top1_lift` e `top1_reliability` **não superaram `p(Top1)`** nos pares informativos de discordância.
 
-O objetivo é descobrir situações em que um Top1 aparentemente mais fraco é historicamente mais confiável que outro com `p(Top1)` ligeiramente maior.
+Essas métricas permanecem como telemetria/benchmark e **não devem alterar o ticket final** enquanto continuarem abaixo do baseline.
 
 ---
 
-## 2. top1_lift
+# Próxima tentativa de superar p(Top1) — p(top1_meta)
 
-Definição:
-
-```text
-top1_lift = taxa_histórica_real_de_Top1 / p(Top1)_médio
-```
-
-Interpretação:
-
-```text
-lift > 1 → Top1 historicamente subestimado
-lift < 1 → Top1 historicamente superestimado
-```
-
-Score candidato:
-
-```text
-adjusted_top1_score = p(Top1) × top1_lift
-```
-
----
-
-## 3. conditional_top1_rate
-
-Estimar:
-
-```text
-P(Top1_hit | contexto)
-```
-
-Contexto inicial sugerido:
-
-```text
-p(Top1)
-p(Top2)
-p(Top3)
-margem Top1-Top2
-entropia
-resultado Top1 = 1/X/2
-```
-
-A posição J01..J14 deve ter prioridade menor que o contexto probabilístico, pois as políticas posicionais puras ainda não demonstraram superioridade.
-
----
-
-## 4. top1_reliability
-
-Criar uma métrica específica para responder:
-
-> **Quanto devo confiar neste Top1?**
-
-Primeira versão por bins:
-
-```text
-p(Top1):
-33–40%
-40–45%
-45–50%
-50–60%
-60%+
-
-margem Top1-Top2:
-0–5 p.p.
-5–10 p.p.
-10–20 p.p.
-20+ p.p.
-
-Top1:
-1 / X / 2
-```
-
-Score:
-
-```text
-top1_reliability = frequência histórica de Top1_hit no contexto
-```
-
-Os bins devem ser aprendidos somente com concursos anteriores em cada passo walk-forward.
-
----
-
-# Disagreement Test
-
-A avaliação mais importante das novas métricas históricas será feita nos casos em que elas **discordam da ordenação de `p(Top1)`**.
-
-Considere dois jogos A e B:
-
-```text
-p(Top1_A) > p(Top1_B)
-```
-
-mas a métrica histórica produz:
-
-```text
-historical_score_A < historical_score_B
-```
-
-Esses casos devem ser registrados separadamente.
-
-Saída desejada:
-
-```text
-[DISAGREEMENT]
-metric: top1_residual
-casos: N
-p(top1) venceu: X
-historical_score venceu: Y
-empates/neutros: Z
-historical_win_rate: ...
-```
-
-Uma métrica histórica só demonstra valor incremental quando consegue vencer `p(Top1)` justamente nesses casos de discordância.
-
----
-
-# Meta-modelo de confiabilidade — p(top1_meta)
-
-Além das fórmulas históricas manuais, testar um modelo secundário cujo alvo seja:
+Criar um modelo secundário cujo alvo seja:
 
 ```text
 top1_hit = 1 ou 0
@@ -267,35 +145,179 @@ top1_is_2
 Saída:
 
 ```text
-p(top1_meta) = P(Top1 realmente acertar | contexto)
+p(top1_meta) = P(Top1 acertar | contexto)
 ```
 
-Fluxo:
+O objetivo é aprender **quando confiar mais ou menos no próprio Top1**, sem ignorar a probabilidade original.
+
+Comparação obrigatória:
 
 ```text
-probabilidades originais
-        ↓
-contexto probabilístico
-        ↓
-modelo de confiabilidade
-        ↓
-p(top1_meta)
-        ↓
-ordenação / otimizador
+p(top1) vs p(top1_meta)
 ```
 
-O objetivo não é criar um segundo modelo que ignore `p(Top1)`, mas aprender **quando confiar mais ou menos nele**.
+sempre em walk-forward.
 
-Comparações obrigatórias:
+---
+
+# Disagreement por intensidade
+
+Além de contar vitórias, medir a intensidade da correção:
 
 ```text
-p(top1)
-vs top1_residual
-vs top1_lift
-vs top1_reliability
-vs conditional_top1_rate
-vs p(top1_meta)
+delta_score = |score_candidato - p(top1)|
 ```
+
+Faixas sugeridas:
+
+```text
+< 0.02
+0.02–0.05
+0.05–0.10
+> 0.10
+```
+
+Objetivo:
+
+> descobrir se o histórico só acrescenta valor quando produz uma discordância forte.
+
+Saída desejada:
+
+```text
+[DISAGREEMENT-STRENGTH]
+metric: p_top1_meta
+faixa: >0.05
+casos: N
+baseline_wins: X
+meta_wins: Y
+meta_win_rate: ...
+```
+
+---
+
+# Disagreement por faixa de p(Top1)
+
+Separar o teste por nível de confiança do favorito:
+
+```text
+33–40%
+40–45%
+45–50%
+50–60%
+60%+
+```
+
+Uma métrica pode perder globalmente e ainda acrescentar sinal em um regime específico, por exemplo apenas em partidas muito equilibradas.
+
+Qualquer uso condicional deve ser validado fora da amostra.
+
+---
+
+# Nova linha prioritária — recuperar erros do Top1
+
+Como `p(Top1)` continua difícil de superar, a principal oportunidade histórica passa a ser outra:
+
+> **quando o Top1 estiver errado, qual segunda marcação tem maior capacidade de recuperar o erro?**
+
+Isso está diretamente alinhado à estrutura de **5 duplos**.
+
+Hoje o desenho dominante é:
+
+```text
+Seco  = Top1
+Duplo = Top1 + Top2
+```
+
+A próxima investigação deve comparar:
+
+```text
+Top1 + Top2
+vs
+Top1 + Top3
+```
+
+por contexto.
+
+---
+
+# Error Recovery Score
+
+Criar scores históricos condicionados ao erro do Top1:
+
+```text
+recovery_top2 = P(Top2_hit | Top1_miss, contexto)
+recovery_top3 = P(Top3_hit | Top1_miss, contexto)
+```
+
+Contexto candidato:
+
+```text
+p_top1
+p_top2
+p_top3
+margin_top1_top2
+margin_top2_top3
+entropy
+top1_is_1/X/2
+perfil probabilístico do concurso
+```
+
+O objetivo não é substituir o Top1, mas escolher a **melhor proteção** para ele.
+
+---
+
+# Second-Mark Disagreement Test
+
+Criar um disagreement específico da segunda marcação.
+
+Exemplo:
+
+```text
+p(Top2) prefere Top2
+recovery_score prefere Top3
+```
+
+Pergunta de avaliação:
+
+> quando Top1 falhou e os dois critérios discordaram, qual segunda marcação acertou mais?
+
+Saída desejada:
+
+```text
+[SECOND-MARK DISAGREEMENT]
+casos: N
+Top2 baseline wins: X
+recovery wins: Y
+neutros: Z
+recovery win rate: ...
+```
+
+Essa comparação deve usar apenas concursos anteriores em cada passo walk-forward.
+
+---
+
+# Double Value Score
+
+Combinar probabilidade atual e recuperação histórica:
+
+```text
+score_T2 = α × p(Top2) + (1-α) × recovery_top2
+score_T3 = α × p(Top3) + (1-α) × recovery_top3
+```
+
+O valor de `α` deve ser aprendido por walk-forward.
+
+Benchmark obrigatório:
+
+```text
+Top1+Top2 baseline
+vs
+Top1+melhor_recovery
+vs
+Top1+double_value_score
+```
+
+Uma segunda marcação histórica só deve ser promovida se melhorar P13+/P12+ fora da amostra.
 
 ---
 
@@ -333,7 +355,7 @@ Limiar atual:
 0.03
 ```
 
-Esse valor deve ser tratado como parâmetro experimental e futuramente otimizado em walk-forward.
+Esse valor é experimental e deve ser otimizado apenas com validação walk-forward.
 
 ---
 
@@ -375,13 +397,11 @@ score = p(Top2) / p(Top1)
 
 ## hist_top1
 
-Protege com duplos as posições em que Top1 foi historicamente menos confiável.
+Protege com duplos as posições onde Top1 foi historicamente menos confiável.
 
 ## hist_top2
 
-Prioriza posições em que Top2 apresentou maior frequência histórica.
-
-As políticas históricas usam somente concursos anteriores em cada passo walk-forward.
+Prioriza posições com maior frequência histórica de Top2.
 
 ## exact
 
@@ -391,7 +411,7 @@ Avalia:
 C(14,5) = 2.002
 ```
 
-alocações de cinco duplos, maximizando principalmente:
+alocações dos cinco duplos e maximiza principalmente:
 
 ```text
 P(>=13)
@@ -438,8 +458,6 @@ Base atual:
 
 # Estado atual do backtest
 
-Execução recente:
-
 ```text
 gain
 14: 0 | 13: 6 | 12: 17 | 11: 48 | 10: 73 | <=9: 271
@@ -470,7 +488,7 @@ exact
 P13+: 1.445783% | P12+: 5.783133% | média: 8.708434
 ```
 
-Com o critério atual:
+Critério atual de seleção:
 
 ```text
 14
@@ -486,8 +504,6 @@ média
 
 `uncertainty` é selecionada porque empata em 13+ com `gain`, `ratio` e `exact`, mas apresenta melhor P12+ entre elas.
 
-As políticas posicionais `hist_top1` e `hist_top2` permanecem como benchmarks; até o momento não superaram as políticas probabilísticas em P13+.
-
 ---
 
 # P13+ e P12+ empíricos
@@ -497,9 +513,9 @@ P13+ empírico = concursos com 13 ou 14 / concursos testados
 P12+ empírico = concursos com 12, 13 ou 14 / concursos testados
 ```
 
-Essas medidas são diferentes das probabilidades teóricas Poisson-binomial do ticket e devem permanecer separadas na telemetria.
+Essas medidas são diferentes das probabilidades teóricas Poisson-binomial do ticket.
 
-Resultados concurso a concurso são salvos em:
+Resultados concurso a concurso:
 
 ```text
 output/backtest.csv
@@ -509,8 +525,6 @@ output/backtest.csv
 
 # Bootstrap e incerteza estatística
 
-Diferenças pequenas entre estratégias não devem ser interpretadas automaticamente como superioridade.
-
 Implementar:
 
 ```text
@@ -518,10 +532,9 @@ bootstrap >= 1.000 reamostragens
 IC95% de P13+
 IC95% de P12+
 IC95% das diferenças entre estratégias
-estabilidade temporal
+IC95% do Disagreement Test
+IC95% do Second-Mark Disagreement
 ```
-
-Também aplicar bootstrap às novas métricas de confiabilidade do Top1 e ao Disagreement Test.
 
 Quando não houver evidência suficiente, registrar:
 
@@ -541,7 +554,7 @@ Log Loss:          0.985557
 ECE:               0.012378
 ```
 
-O ECE baixo estabelece um baseline probabilístico forte; por isso, qualquer correção histórica de `p(Top1)` deve demonstrar ganho real fora da amostra.
+O ECE baixo estabelece um baseline probabilístico forte.
 
 Calibração aplicada futura:
 
@@ -551,35 +564,13 @@ vs
 exact_calibrated
 ```
 
-A calibração só deve ser mantida se melhorar o desempenho walk-forward.
-
----
-
-# Métricas probabilísticas do ticket
-
-Para cada jogo:
-
-```text
-Seco:  q(i) = P(resultado marcado)
-Duplo: q(i) = P(resultado A) + P(resultado B)
-```
-
-A distribuição de acertos é modelada como Poisson-binomial, sob hipótese de independência entre as 14 partidas.
-
-Telemetria:
-
-```text
-P(14)
-P(13)
-P(>=13)
-E[acertos]
-```
+Só manter calibração aplicada se melhorar walk-forward.
 
 ---
 
 # Distribution Backtest
 
-Após testar as métricas capazes de desafiar `p(Top1)`, ampliar o espaço das 19 marcações.
+Depois de entender melhor o valor da segunda marcação, ampliar o espaço das 19 marcações.
 
 Testar distribuições como:
 
@@ -617,36 +608,31 @@ desvio-padrão
 
 ---
 
-# Duplos flexíveis e secos alternativos
-
-Testar futuramente:
-
-```text
-Duplo: T1T2 | T1T3 | T2T3
-Seco:  T1   | T2   | T3
-```
-
-Top2/Top3 secos ou duplos que excluam Top1 só devem ser usados quando demonstrarem vantagem fora da amostra.
-
----
-
 # FullMarkingOptimizer
 
-Evolução do `exact` para otimização completa:
+O FullMarkingOptimizer só deve entrar depois de validar onde existe sinal incremental.
+
+Espaço futuro:
+
+```text
+Seco:  T1 | T2 | T3
+Duplo: T1T2 | T1T3 | T2T3
+```
+
+Fluxo:
 
 ```text
 14 jogos
    ↓
-Seco:  T1 | T2 | T3
-Duplo: T1T2 | T1T3 | T2T3
+opções de marcação
    ↓
 Hard Constraints
    ↓
 9 secos + 5 duplos
    ↓
-Score probabilístico / histórico incremental
+score probabilístico + histórico validado
    ↓
-Melhor ticket
+melhor ticket
 ```
 
 Comparar:
@@ -657,33 +643,15 @@ historical_exact
 hybrid_exact
 ```
 
-No modelo híbrido, o histórico só deve receber peso se demonstrar informação incremental sobre `p(Top1)`.
-
----
-
-# Historical 13+ Score
-
-`hist_13plus` permanece como linha experimental, mas deixa de ser a primeira prioridade histórica.
-
-Pergunta:
-
-> qual combinação de posição, ranking e perfil esteve associada a tickets com 13 ou 14?
-
-Essa métrica deve ser comparada contra as métricas de confiabilidade do Top1 e contra `p(Top1)` puro.
-
-Ela só deve entrar no otimizador se acrescentar sinal fora da amostra.
+O histórico só recebe peso se demonstrar ganho incremental fora da amostra.
 
 ---
 
 # Similaridade histórica / KNN
 
-Criar futuramente:
+Criar futuramente `similarity_knn` usando apenas informação pré-jogo.
 
-```text
-similarity_knn
-```
-
-Features possíveis do perfil do concurso:
+Features candidatas:
 
 ```text
 média p(Top1)
@@ -696,29 +664,22 @@ número de favoritos fortes
 número de jogos equilibrados
 ```
 
-A similaridade deve usar apenas informação disponível antes do resultado real.
+O KNN pode ser útil tanto para confiabilidade do Top1 quanto para recuperação Top2/Top3.
 
 ---
 
 # Estabilidade temporal
 
-Medir desempenho em:
-
-```text
-primeiro terço
-segundo terço
-último terço
-```
-
-ou janelas móveis de N concursos.
+Medir desempenho em terços do histórico e janelas móveis.
 
 Registrar:
 
 ```text
 P13+ por período
 P12+ por período
-Top1 accuracy por período
-Disagreement win rate por período
+Top1 accuracy
+Disagreement win rate
+Second-Mark win rate
 média por período
 pior janela
 melhor janela
@@ -728,7 +689,7 @@ melhor janela
 
 # Telemetria desejada
 
-Além da saída atual, registrar futuramente por jogo:
+Por jogo:
 
 ```text
 p_top1
@@ -736,25 +697,24 @@ p_top2
 p_top3
 margin_top1_top2
 entropy
-top1_residual
-top1_lift
-top1_reliability
-conditional_top1_rate
 p_top1_meta
-baseline_rank
-historical_rank
-disagreement_flag
+top1_disagreement_strength
+recovery_top2
+recovery_top3
+second_mark_baseline
+second_mark_recovery
+second_mark_disagreement_flag
+double_value_top2
+double_value_top3
 ```
 
-E agregados:
+Agregados:
 
 ```text
 Top1 baseline accuracy
-Historical metric accuracy
-Disagreement cases
-p(top1) wins
-historical wins
-historical win rate
+Top1 meta accuracy
+Top1 disagreement win rate
+Second-Mark disagreement win rate
 P13+
 P12+
 IC95%
@@ -810,66 +770,68 @@ python -m unittest discover -v
 - [x] políticas `gain`, `uncertainty`, `margin` e `ratio`;
 - [x] `exact` com 2.002 combinações;
 - [x] `P(14)`, `P(13)`, `P(>=13)` e `E[acertos]`;
-- [x] Brier, Log Loss, ECE e bins de calibração;
+- [x] Brier, Log Loss e ECE;
 - [x] matriz posição × ranking;
 - [x] `hist_top1` e `hist_top2`;
 - [x] walk-forward sem vazamento temporal;
 - [x] backtest 10–14;
 - [x] `P13+` e `P12+` empíricos;
-- [x] `output/backtest.csv`.
+- [x] `output/backtest.csv`;
+- [x] Disagreement Test contra `p(Top1)`;
+- [x] `top1_residual`;
+- [x] `top1_lift`;
+- [x] `top1_reliability`;
+- [x] evidência de que essas três métricas não superam atualmente o baseline.
 
 ## Próximas prioridades — ordem prática
 
-1. [x] implementar **Disagreement Test** contra `p(Top1)`;
-2. [x] implementar `top1_residual`;
-3. [x] implementar `top1_lift`;
-4. [x] implementar `top1_reliability` por bins;
-5. [ ] implementar `conditional_top1_rate`;
-6. [ ] implementar `p(top1_meta)`;
-7. [ ] comparar todas as métricas contra `p(Top1)` em walk-forward;
-8. [ ] bootstrap + IC95% das diferenças e do Disagreement Test;
-9. [ ] medir estabilidade temporal das métricas candidatas;
-10. [ ] registrar empate estatístico quando apropriado;
-11. [ ] testar `historical_13plus_score` como métrica complementar;
+1. [ ] implementar `p(top1_meta)`;
+2. [ ] implementar disagreement por intensidade;
+3. [ ] implementar disagreement por faixa de `p(Top1)`;
+4. [ ] bootstrap + IC95% do disagreement;
+5. [ ] congelar como benchmark métricas históricas que permaneçam <=50%;
+6. [ ] implementar `error_recovery_score` para Top2 e Top3;
+7. [ ] comparar `T1T2` vs `T1T3` em walk-forward;
+8. [ ] implementar Second-Mark Disagreement Test;
+9. [ ] implementar `double_value_score`;
+10. [ ] medir impacto de `recovery_score` sobre P13+/P12+;
+11. [ ] medir estabilidade temporal;
 12. [ ] implementar `distribution_backtest` Top1/Top2/Top3;
-13. [ ] permitir duplos T1T3 e T2T3;
-14. [ ] avaliar secos Top2/Top3;
-15. [ ] implementar FullMarkingOptimizer;
-16. [ ] implementar KNN por similaridade;
-17. [ ] implementar calibração aplicada;
-18. [ ] implementar `hybrid_hist_prob` / `hybrid_exact`;
-19. [ ] adicionar baseline aleatório;
-20. [ ] validar runs e fragmentação;
-21. [ ] remover/substituir desempate posicional arbitrário do `exact`;
-22. [ ] otimizar o limiar do Palmeiras.
-
-O teste walk-forward atual mantém essas métricas apenas como telemetria: as três
-ficaram abaixo de 50% de vitórias nos pares informativos de discordância e, por
-isso, **não alteram o ticket final** até demonstrarem ganho incremental. Os scores
-e o contexto de confiabilidade são exportados em `output/predictions.csv`.
+13. [ ] avaliar secos Top2/Top3 somente se houver evidência;
+14. [ ] implementar FullMarkingOptimizer;
+15. [ ] implementar KNN por similaridade;
+16. [ ] implementar calibração aplicada;
+17. [ ] testar `historical_13plus_score` como métrica complementar;
+18. [ ] adicionar baseline aleatório;
+19. [ ] remover/substituir desempate posicional arbitrário do `exact`;
+20. [ ] otimizar o limiar do Palmeiras.
 
 ---
 
 # Critério de sucesso
 
-O projeto não busca simplesmente encontrar uma heurística histórica diferente.
+A régua atual é:
 
-A nova régua é:
+> **preservar o que `p(Top1)` já faz bem e usar o histórico apenas onde ele demonstrar valor incremental.**
 
-> **uma métrica histórica só é útil se acrescentar informação que `p(Top1)` ainda não contém.**
-
-Critérios mínimos:
+Para o Top1:
 
 ```text
 superar p(Top1) fora da amostra
 ↓
 vencer nos casos de discordância
 ↓
+resistir a bootstrap
+```
+
+Para a segunda marcação:
+
+```text
+recuperar mais erros do Top1 que p(Top2) puro
+↓
 melhorar P13+ / P12+
 ↓
 manter estabilidade temporal
-↓
-resistir a bootstrap / intervalos de confiança
 ```
 
 A unidade final de avaliação continua sendo o ticket completo de 19 marcações.
@@ -881,9 +843,11 @@ A unidade final de avaliação continua sendo o ticket completo de 19 marcaçõe
 ```text
 p(Top1) baseline
       +
-Histórico incremental
+Meta-confiabilidade validada
       +
-Teste de discordância
+Recuperação histórica do erro do Top1
+      +
+Segunda marcação otimizada
       +
 Validação walk-forward
       +
@@ -898,4 +862,4 @@ Otimização
 PALPITE FINAL
 ```
 
-> **O histórico não deve competir com `p(Top1)` por intuição; deve demonstrar, fora da amostra, onde `p(Top1)` pode ser corrigido e se essa correção aumenta a capacidade do ticket de atingir 13 ou 14 pontos.**
+> **O histórico não deve substituir o sinal probabilístico por intuição; deve provar onde consegue melhorar aquilo que a probabilidade ainda não resolve.**
