@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.common import Match, threshold_probability
+from scripts.common import Match, threshold_probability, ticket_metrics
 from scripts.predict_results import optimize
-from scripts.train_model import train
+from scripts.train_model import exact_ticket, heuristic_ticket, ticket_metrics_for, train
 
 
 class PipelineTests(unittest.TestCase):
@@ -23,6 +23,24 @@ class PipelineTests(unittest.TestCase):
     def test_threshold_probability_extremes(self):
         self.assertEqual(threshold_probability([1.0] * 14), 1.0)
         self.assertEqual(threshold_probability([0.0] * 14), 0.0)
+
+    def test_ticket_metrics_known_case(self):
+        metrics = ticket_metrics([0.5] * 14)
+        self.assertAlmostEqual(metrics["p14"], 1 / 2**14)
+        self.assertAlmostEqual(metrics["p13"], 14 / 2**14)
+        self.assertAlmostEqual(metrics["expected_hits"], 7.0)
+
+    def test_exact_optimizer_is_never_worse_than_heuristics(self):
+        games = [Match(1, i + 1, "A", "B", {
+            "1": 0.34 + i / 1000, "X": 0.33, "2": 0.33 - i / 1000
+        }) for i in range(14)]
+        exact, _ = exact_ticket(games)
+        exact_probability = ticket_metrics_for(games, exact)["p13_plus"]
+        for policy in ("gain", "uncertainty", "margin", "ratio"):
+            heuristic, _ = heuristic_ticket(games, policy)
+            self.assertGreaterEqual(
+                exact_probability, ticket_metrics_for(games, heuristic)["p13_plus"] - 1e-15
+            )
 
     def test_training_is_reproducible(self):
         with tempfile.TemporaryDirectory() as directory:

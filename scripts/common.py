@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,3 +94,24 @@ def threshold_probability(probabilities: list[float], target: int = 13) -> float
             )
         distribution[0] *= 1 - probability
     return sum(distribution[target:])
+
+
+def ticket_metrics(probabilities: list[float]) -> dict[str, float]:
+    """Return the exact Poisson-binomial ticket metrics.
+
+    Match outcomes are assumed to be independent, as documented in the README.
+    """
+    if len(probabilities) != 14 or any(not 0 <= value <= 1 for value in probabilities):
+        raise ValueError("métricas exigem 14 probabilidades entre zero e um")
+    p14 = math.prod(probabilities)
+    # Prefix/suffix products keep P(13) linear and also handle zero coverage safely.
+    prefix = [1.0]
+    for probability in probabilities:
+        prefix.append(prefix[-1] * probability)
+    suffix = [1.0] * 15
+    for i in range(13, -1, -1):
+        suffix[i] = suffix[i + 1] * probabilities[i]
+    p13 = sum((1.0 - probability) * prefix[i] * suffix[i + 1]
+              for i, probability in enumerate(probabilities))
+    return {"p14": p14, "p13": p13, "p13_plus": p13 + p14,
+            "expected_hits": sum(probabilities)}
