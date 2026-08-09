@@ -33,6 +33,11 @@ def main() -> None:
     print(f"[DISAGREEMENT] p_top1_meta: {audit['cases']} casos | "
           f"baseline {audit['baseline_wins']} x meta {audit['meta_wins']} | "
           f"neutros {audit['neutral']} | win rate {audit['meta_win_rate']:.2%}")
+    recovery = model["error_recovery"]["walk_forward_disagreement"]
+    print(f"[SECOND-MARK DISAGREEMENT] {recovery['cases']} casos | "
+          f"Top2 {recovery['top2_baseline_wins']} x recovery {recovery['recovery_wins']} | "
+          f"win rate {recovery['recovery_win_rate']:.2%} | "
+          f"seletor final: {model['selected_second_mark']}")
     predict(args.next_contest, args.model, args.output)
 
 

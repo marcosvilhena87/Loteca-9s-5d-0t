@@ -5,7 +5,9 @@ from pathlib import Path
 from scripts.common import Match, threshold_probability, ticket_metrics
 from scripts.predict_results import optimize, predict
 from scripts.train_model import (exact_ticket, heuristic_ticket, probability_diagnostics,
-                                 historical_ticket, position_rank_hit_rates,
+                                 allocated_ticket, error_recovery_model, historical_ticket,
+                                 position_rank_hit_rates, recovery_context, recovery_scores,
+                                 select_second_mark,
                                  reliability_scores, ticket_metrics_for,
                                  top1_meta_features, top1_meta_score,
                                  top1_reliability_model, train, walk_forward_backtest,
@@ -167,6 +169,26 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(audit["observations"], 14)
         self.assertFalse(audit["promoted_to_ticket"])
         self.assertEqual(audit["feature_names"][0], "intercept")
+
+    def test_recovery_learns_top3_only_from_top1_misses(self):
+        past = [[Match(1, i + 1, "A", "B", {"1": .5, "X": .3, "2": .2},
+                       "2" if i < 10 else "1") for i in range(14)]]
+        game = Match(2, 1, "A", "B", {"1": .5, "X": .3, "2": .2})
+        model = error_recovery_model(past)
+        scores = recovery_scores(game, model)
+        self.assertGreater(scores["recovery_top3"], scores["recovery_top2"])
+        self.assertAlmostEqual(scores["recovery_top2"] + scores["recovery_top3"], 1.0)
+        self.assertEqual(select_second_mark(game, "recovery", model), "2")
+
+    def test_allocator_and_second_mark_selector_preserve_ticket_shape(self):
+        games = [Match(2, i + 1, "A", "B", {"1": .5, "X": .3, "2": .2})
+                 for i in range(14)]
+        context = recovery_context(games[0])
+        recovery = {context: {"recovery_top2": .1, "recovery_top3": .9}}
+        ticket, _ = allocated_ticket(games, "uncertainty", "recovery",
+                                     recovery_model=recovery)
+        self.assertEqual(sorted(map(len, ticket)), [1] * 9 + [2] * 5)
+        self.assertTrue(all(pick == {"1", "2"} for pick in ticket if len(pick) == 2))
 
 
 if __name__ == "__main__":

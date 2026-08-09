@@ -22,6 +22,7 @@ META_FEATURE_NAMES = ("intercept", "p_top1", "p_top2", "p_top3",
                       "margin_top1_top2", "ratio_top2_top1", "entropy",
                       "top1_is_1", "top1_is_X", "top1_is_2")
 DISAGREEMENT_STRENGTH_BINS = (0.02, 0.05, 0.10)
+RECOVERY_SELECTORS = ("top2_baseline", "recovery")
 
 
 def _bin_index(value: float, boundaries: tuple[float, ...]) -> int:
@@ -36,6 +37,65 @@ def reliability_context(game: Match) -> tuple[int, int, str]:
         _bin_index(game.probabilities[top1] - game.probabilities[top2], MARGIN_BINS),
         top1,
     )
+
+
+def recovery_context(game: Match) -> tuple[int, int, str]:
+    """Return a deliberately coarse, pre-match-only error-recovery context."""
+    return reliability_context(game)
+
+
+def error_recovery_model(
+    contests: list[list[Match]],
+) -> dict[tuple[int, int, str], dict[str, float]]:
+    """Estimate which remaining rank wins when Top1 misses.
+
+    Only Top1 misses enter the estimator. A symmetric Beta prior regularizes
+    sparse contexts and guarantees complementary Top2/Top3 probabilities.
+    """
+    buckets: dict[tuple[int, int, str], list[int]] = {}
+    for games in contests:
+        for game in games:
+            if game.actual not in ("1", "X", "2"):
+                raise ValueError("recovery exige resultados reais")
+            if game.actual == game.ranking[0]:
+                continue
+            counts = buckets.setdefault(recovery_context(game), [0, 0])
+            counts[0] += 1
+            counts[1] += game.actual == game.ranking[1]
+    return {
+        key: {
+            "top1_misses": float(total),
+            "recovery_top2": (top2_hits + 1) / (total + 2),
+            "recovery_top3": (total - top2_hits + 1) / (total + 2),
+        }
+        for key, (total, top2_hits) in buckets.items()
+    }
+
+
+def recovery_scores(
+    game: Match, model: dict[tuple[int, int, str], dict[str, float]],
+) -> dict[str, float]:
+    """Return smoothed recovery scores, using current odds as safe fallback."""
+    bucket = model.get(recovery_context(game))
+    if bucket is not None:
+        return {name: bucket[name] for name in ("recovery_top2", "recovery_top3")}
+    _, top2, top3 = game.ranking
+    denominator = game.probabilities[top2] + game.probabilities[top3]
+    return {
+        "recovery_top2": game.probabilities[top2] / denominator,
+        "recovery_top3": game.probabilities[top3] / denominator,
+    }
+
+
+def select_second_mark(game: Match, selector: str,
+                       recovery_model: dict | None = None) -> str:
+    """Select the protection mark independently from double allocation."""
+    if selector == "top2_baseline":
+        return game.ranking[1]
+    if selector != "recovery":
+        raise ValueError(f"seletor de segunda marca inválido: {selector}")
+    scores = recovery_scores(game, recovery_model or {})
+    return game.ranking[2] if scores["recovery_top3"] > scores["recovery_top2"] else game.ranking[1]
 
 
 def top1_reliability_model(contests: list[list[Match]]) -> dict[tuple[int, int, str], dict[str, float]]:
@@ -248,6 +308,45 @@ def walk_forward_reliability(contests: dict[int, list[Match]],
     return totals
 
 
+def walk_forward_second_mark(contests: dict[int, list[Match]],
+                             minimum_history: int = MIN_WALK_FORWARD_CONTESTS
+                             ) -> dict[str, object]:
+    """Audit Top2 versus recovery exclusively on out-of-sample Top1 misses."""
+    ordered = [contests[key] for key in sorted(contests)]
+    if not 1 <= minimum_history < len(ordered):
+        raise ValueError("janela inicial inválida para walk-forward")
+    audit = {"cases": 0, "top2_baseline_wins": 0, "recovery_wins": 0,
+             "neutral": 0, "top1_misses": 0, "recovery_top3_uses": 0}
+    for index in range(minimum_history, len(ordered)):
+        model = error_recovery_model(ordered[:index])
+        for game in ordered[index]:
+            if game.actual == game.ranking[0]:
+                continue
+            audit["top1_misses"] += 1
+            selected = select_second_mark(game, "recovery", model)
+            if selected == game.ranking[1]:
+                continue
+            audit["cases"] += 1
+            audit["recovery_top3_uses"] += 1
+            if game.actual == selected:
+                audit["recovery_wins"] += 1
+            else:
+                audit["top2_baseline_wins"] += 1
+    informative = audit["top2_baseline_wins"] + audit["recovery_wins"]
+    return {
+        **audit,
+        "recovery_win_rate": round(audit["recovery_wins"] / informative, 8)
+        if informative else 0.0,
+        "recovery_top3_usage_rate": round(audit["recovery_top3_uses"] /
+                                           audit["top1_misses"], 8)
+        if audit["top1_misses"] else 0.0,
+        "passes_disagreement_threshold": bool(informative and
+                                              audit["recovery_wins"] > audit["top2_baseline_wins"]),
+        # Promotion additionally requires ticket-level P13+/P12+ evidence.
+        "promoted_to_ticket": False,
+    }
+
+
 def probability_diagnostics(contests: dict[int, list[Match]],
                             calibration_bins: int = 10) -> dict[str, object]:
     """Measure probability quality without using any post-result information.
@@ -328,9 +427,14 @@ def team_result(match: Match, needle: str) -> str | None:
 
 
 def constrained_pick(game: Match, is_double: bool,
-                     palmeiras_threshold: float) -> tuple[set[str], list[str]]:
+                     palmeiras_threshold: float,
+                     second_mark: str | None = None) -> tuple[set[str], list[str]]:
     """Create one constrained pick without changing its number of markings."""
-    selection = set(game.ranking[:2] if is_double else game.ranking[:1])
+    if second_mark is not None and (not is_double or second_mark == game.ranking[0]
+                                    or second_mark not in ("1", "X", "2")):
+        raise ValueError("segunda marca exige um duplo e deve ser diferente do Top1")
+    selection = ({game.ranking[0], second_mark} if second_mark is not None
+                 else set(game.ranking[:2] if is_double else game.ranking[:1]))
     notes: list[str] = []
     flamengo_win = team_result(game, "FLAMENGO")
     if flamengo_win and flamengo_win not in selection:
@@ -353,15 +457,20 @@ def constrained_pick(game: Match, is_double: bool,
 
 
 def build_ticket(games: list[Match], double_indexes: set[int],
-                 palmeiras_threshold: float = 0.03) -> tuple[list[set[str]], list[str]]:
+                 palmeiras_threshold: float = 0.03,
+                 second_marks: dict[int, str] | None = None
+                 ) -> tuple[list[set[str]], list[str]]:
     """Build every ticket through the same constraints-aware pipeline."""
     if len(games) != 14 or len(double_indexes) != 5 or not double_indexes <= set(range(14)):
         raise ValueError("o ticket exige 14 jogos e exatamente 5 índices de duplos")
+    if second_marks and set(second_marks) != double_indexes:
+        raise ValueError("segunda marca deve ser informada para cada duplo")
     ticket: list[set[str]] = []
     notes: list[str] = []
     for i, game in enumerate(games):
         selection, pick_notes = constrained_pick(
-            game, i in double_indexes, palmeiras_threshold
+            game, i in double_indexes, palmeiras_threshold,
+            second_marks.get(i) if second_marks else None,
         )
         ticket.append(selection)
         notes.extend(pick_notes)
@@ -377,6 +486,16 @@ def ticket_metrics_for(games: list[Match], ticket: list[set[str]]) -> dict[str, 
 def heuristic_ticket(games: list[Match], policy: str) -> tuple[list[set[str]], list[str]]:
     indexes = set(sorted(range(14), key=lambda i: (-priority(games[i], policy), i))[:5])
     return build_ticket(games, indexes)
+
+
+def allocated_ticket(games: list[Match], policy: str, selector: str,
+                     rates: list[list[float]] | None = None,
+                     recovery_model: dict | None = None) -> tuple[list[set[str]], list[str]]:
+    """Compose a DoubleAllocator and a SecondMarkSelector into one valid ticket."""
+    baseline, _ = ticket_for_policy(games, policy, rates)
+    indexes = {i for i, pick in enumerate(baseline) if len(pick) == 2}
+    marks = {i: select_second_mark(games[i], selector, recovery_model) for i in indexes}
+    return build_ticket(games, indexes, second_marks=marks)
 
 
 def position_rank_hit_rates(contests: list[list[Match]]) -> list[list[float]]:
@@ -538,8 +657,11 @@ def train(history_path: str, model_path: str,
         for game in games:
             rank_hits[game.ranking.index(game.actual)] += 1
     top1_meta = walk_forward_top1_meta(contests)
+    recovery = error_recovery_model(list(contests.values()))
+    recovery_audit = walk_forward_second_mark(contests)
     model = {
-        "version": 7, "selected_policy": selected,
+        "version": 8, "selected_policy": selected,
+        "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
             "minimum_history": MIN_WALK_FORWARD_CONTESTS,
@@ -556,6 +678,14 @@ def train(history_path: str, model_path: str,
                 {"p_top1_bin": key[0], "margin_bin": key[1], "top1_result": key[2],
                  **{name: round(value, 8) for name, value in values.items()}}
                 for key, values in sorted(top1_reliability_model(list(contests.values())).items())
+            ],
+        },
+        "error_recovery": {
+            "walk_forward_disagreement": recovery_audit,
+            "contexts": [
+                {"p_top1_bin": key[0], "margin_bin": key[1], "top1_result": key[2],
+                 **{name: round(value, 8) for name, value in values.items()}}
+                for key, values in sorted(recovery.items())
             ],
         },
     }

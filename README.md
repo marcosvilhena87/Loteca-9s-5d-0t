@@ -951,15 +951,19 @@ python -m unittest discover -v
 - [x] disagreement por intensidade;
 - [x] disagreement por faixa de `p(Top1)`;
 - [x] evidência de que as quatro correções atuais não superam `p(Top1)`.
+- [x] `error_recovery_score` Top2/Top3 regularizado e sem vazamento;
+- [x] separação `DoubleAllocator` × `SecondMarkSelector`;
+- [x] Second-Mark Disagreement Test walk-forward;
+- [x] telemetria de recovery e segunda marca no palpite final;
 
 ## Próximas prioridades — ordem prática
 
 1. [ ] validar `p(top1_meta)` com refit completo e features reduzidas;
 2. [ ] congelar formalmente como benchmark correções Top1 que permaneçam <=50%;
-3. [ ] implementar `error_recovery_score` para Top2 e Top3;
-4. [ ] implementar `SecondMarkSelector` separado do `DoubleAllocator`;
+3. [x] implementar `error_recovery_score` para Top2 e Top3;
+4. [x] implementar `SecondMarkSelector` separado do `DoubleAllocator`;
 5. [ ] comparar `T1T2` vs `T1T3` em walk-forward;
-6. [ ] implementar Second-Mark Disagreement Test;
+6. [x] implementar Second-Mark Disagreement Test;
 7. [ ] segmentar Second-Mark Disagreement por intensidade;
 8. [ ] segmentar Second-Mark Disagreement por faixa de `p(Top1)`;
 9. [ ] bootstrap + IC95% da segunda marcação;
