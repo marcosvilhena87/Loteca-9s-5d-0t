@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "selected_policy": "uncertainty",
   "contests_evaluated": 445,
   "policy_backtest": {
@@ -346,6 +346,110 @@
         0.217978
       ]
     ]
+  },
+  "top1_meta": {
+    "feature_names": [
+      "intercept",
+      "p_top1",
+      "p_top2",
+      "p_top3",
+      "margin_top1_top2",
+      "ratio_top2_top1",
+      "entropy",
+      "top1_is_1",
+      "top1_is_X",
+      "top1_is_2"
+    ],
+    "coefficients": [
+      0.0256027895419727,
+      0.05029978736635162,
+      -0.008220965529035703,
+      -0.01686563350883603,
+      0.05852075289538728,
+      -0.05085310435351188,
+      -0.009716442111755229,
+      0.04861583943391674,
+      -0.0006210395809383313,
+      -0.022781611524498566
+    ],
+    "observations": 5810,
+    "baseline_brier": 0.23397685,
+    "meta_brier": 0.24062888,
+    "disagreement": {
+      "cases": 4107,
+      "baseline_wins": 1140,
+      "meta_wins": 896,
+      "neutral": 2071,
+      "meta_win_rate": 0.44007859
+    },
+    "disagreement_by_strength": {
+      "<0.02": {
+        "cases": 85,
+        "baseline_wins": 16,
+        "meta_wins": 18,
+        "neutral": 51,
+        "meta_win_rate": 0.52941176
+      },
+      "0.02-0.05": {
+        "cases": 591,
+        "baseline_wins": 163,
+        "meta_wins": 129,
+        "neutral": 299,
+        "meta_win_rate": 0.44178082
+      },
+      "0.05-0.10": {
+        "cases": 2045,
+        "baseline_wins": 567,
+        "meta_wins": 461,
+        "neutral": 1017,
+        "meta_win_rate": 0.44844358
+      },
+      ">=0.10": {
+        "cases": 1386,
+        "baseline_wins": 394,
+        "meta_wins": 288,
+        "neutral": 704,
+        "meta_win_rate": 0.42228739
+      }
+    },
+    "disagreement_by_p_top1": {
+      "33-40%": {
+        "cases": 712,
+        "baseline_wins": 174,
+        "meta_wins": 178,
+        "neutral": 360,
+        "meta_win_rate": 0.50568182
+      },
+      "40-45%": {
+        "cases": 1174,
+        "baseline_wins": 334,
+        "meta_wins": 252,
+        "neutral": 588,
+        "meta_win_rate": 0.43003413
+      },
+      "45-50%": {
+        "cases": 945,
+        "baseline_wins": 272,
+        "meta_wins": 202,
+        "neutral": 471,
+        "meta_win_rate": 0.42616034
+      },
+      "50-60%": {
+        "cases": 946,
+        "baseline_wins": 275,
+        "meta_wins": 196,
+        "neutral": 475,
+        "meta_win_rate": 0.41613588
+      },
+      "60%+": {
+        "cases": 330,
+        "baseline_wins": 85,
+        "meta_wins": 68,
+        "neutral": 177,
+        "meta_win_rate": 0.44444444
+      }
+    },
+    "promoted_to_ticket": false
   },
   "top1_reliability": {
     "walk_forward_disagreement": {

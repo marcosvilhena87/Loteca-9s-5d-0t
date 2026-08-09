@@ -26,6 +26,13 @@ def main() -> None:
         print(f"[DISAGREEMENT] {metric}: {audit['cases']} casos | "
               f"baseline {audit['baseline_wins']} x histórico {audit['historical_wins']} | "
               f"neutros {audit['neutral']} | win rate {audit['historical_win_rate']:.2%}")
+    meta = model["top1_meta"]
+    audit = meta["disagreement"]
+    print(f"[TOP1-META] Brier baseline {meta['baseline_brier']:.6f} x "
+          f"meta {meta['meta_brier']:.6f}")
+    print(f"[DISAGREEMENT] p_top1_meta: {audit['cases']} casos | "
+          f"baseline {audit['baseline_wins']} x meta {audit['meta_wins']} | "
+          f"neutros {audit['neutral']} | win rate {audit['meta_win_rate']:.2%}")
     predict(args.next_contest, args.model, args.output)
 
 

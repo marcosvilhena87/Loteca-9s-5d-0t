@@ -18,6 +18,10 @@ MIN_WALK_FORWARD_CONTESTS = 30
 RELIABILITY_METRICS = ("top1_residual", "top1_lift", "top1_reliability")
 P_TOP1_BINS = (0.40, 0.45, 0.50, 0.60)
 MARGIN_BINS = (0.05, 0.10, 0.20)
+META_FEATURE_NAMES = ("intercept", "p_top1", "p_top2", "p_top3",
+                      "margin_top1_top2", "ratio_top2_top1", "entropy",
+                      "top1_is_1", "top1_is_X", "top1_is_2")
+DISAGREEMENT_STRENGTH_BINS = (0.02, 0.05, 0.10)
 
 
 def _bin_index(value: float, boundaries: tuple[float, ...]) -> int:
@@ -73,6 +77,131 @@ def reliability_scores(game: Match, model: dict[tuple[int, int, str], dict[str, 
         "top1_residual": min(1.0, max(0.0, p_top1 + observed - mean_probability)),
         "top1_lift": min(1.0, max(0.0, p_top1 * observed / mean_probability)),
         "top1_reliability": observed,
+    }
+
+
+def top1_meta_features(game: Match) -> list[float]:
+    """Return the pre-match-only features specified by the README.
+
+    Entropy is normalized by its three-outcome maximum so every continuous
+    input is naturally close to [0, 1], which makes the small deterministic
+    logistic learner stable without an external ML dependency.
+    """
+    top1, top2, top3 = game.ranking
+    p1, p2, p3 = (game.probabilities[result] for result in game.ranking)
+    entropy = -sum(p * math.log(max(p, 1e-15)) for p in (p1, p2, p3)) / math.log(3)
+    return [1.0, p1, p2, p3, p1 - p2, p2 / p1, entropy,
+            float(top1 == "1"), float(top1 == "X"), float(top1 == "2")]
+
+
+def _sigmoid(value: float) -> float:
+    if value >= 0:
+        return 1.0 / (1.0 + math.exp(-value))
+    exponential = math.exp(value)
+    return exponential / (1.0 + exponential)
+
+
+def top1_meta_score(game: Match, coefficients: list[float]) -> float:
+    if len(coefficients) != len(META_FEATURE_NAMES):
+        raise ValueError("p(top1_meta) exige um coeficiente por feature")
+    return _sigmoid(sum(weight * value for weight, value in
+                        zip(coefficients, top1_meta_features(game))))
+
+
+def fit_top1_meta(contests: list[list[Match]], epochs: int = 80,
+                  learning_rate: float = 0.08, l2: float = 0.01,
+                  initial: list[float] | None = None) -> list[float]:
+    """Fit a deterministic regularized logistic model for ``top1_hit``."""
+    coefficients = list(initial or [0.0] * len(META_FEATURE_NAMES))
+    examples = [(top1_meta_features(game), float(game.actual == game.ranking[0]))
+                for games in contests for game in games]
+    if not examples:
+        raise ValueError("p(top1_meta) exige histórico")
+    for epoch in range(epochs):
+        rate = learning_rate / (1.0 + epoch / 20.0)
+        gradient = [0.0] * len(coefficients)
+        for features, target in examples:
+            error = _sigmoid(sum(w * x for w, x in zip(coefficients, features))) - target
+            for index, value in enumerate(features):
+                gradient[index] += error * value
+        for index in range(len(coefficients)):
+            penalty = 0.0 if index == 0 else l2 * coefficients[index]
+            coefficients[index] -= rate * (gradient[index] / len(examples) + penalty)
+    return coefficients
+
+
+def _audit_summary(audit: dict[str, int]) -> dict[str, int | float]:
+    informative = audit["baseline_wins"] + audit["meta_wins"]
+    return {**audit, "meta_win_rate": round(audit["meta_wins"] / informative, 8)
+            if informative else 0.0}
+
+
+def walk_forward_top1_meta(contests: dict[int, list[Match]],
+                           minimum_history: int = MIN_WALK_FORWARD_CONTESTS
+                           ) -> dict[str, object]:
+    """Evaluate p(Top1) against p(top1_meta) with an expanding cutoff.
+
+    Each contest's predictions are made by a model fitted exclusively on older
+    contests. Disagreement audits compare pair orderings, matching the existing
+    reliability benchmark, and are segmented by correction strength and p(Top1).
+    """
+    ordered = [contests[key] for key in sorted(contests)]
+    if not 1 <= minimum_history < len(ordered):
+        raise ValueError("janela inicial inválida para walk-forward")
+    total = {"cases": 0, "baseline_wins": 0, "meta_wins": 0, "neutral": 0}
+    strength = {label: {"cases": 0, "baseline_wins": 0, "meta_wins": 0, "neutral": 0}
+                for label in ("<0.02", "0.02-0.05", "0.05-0.10", ">=0.10")}
+    probability = {label: {"cases": 0, "baseline_wins": 0, "meta_wins": 0, "neutral": 0}
+                   for label in ("33-40%", "40-45%", "45-50%", "50-60%", "60%+")}
+    baseline_brier = meta_brier = 0.0
+    observations = 0
+    coefficients = fit_top1_meta(ordered[:minimum_history])
+    for index in range(minimum_history, len(ordered)):
+        games = ordered[index]
+        baseline = [game.probabilities[game.ranking[0]] for game in games]
+        meta = [top1_meta_score(game, coefficients) for game in games]
+        hits = [game.actual == game.ranking[0] for game in games]
+        for base, candidate, hit in zip(baseline, meta, hits):
+            baseline_brier += (base - hit) ** 2
+            meta_brier += (candidate - hit) ** 2
+            observations += 1
+        for left, right in combinations(range(14), 2):
+            base_order = (baseline[left] > baseline[right]) - (baseline[left] < baseline[right])
+            meta_order = (meta[left] > meta[right]) - (meta[left] < meta[right])
+            if not base_order or not meta_order or base_order == meta_order:
+                continue
+            result_order = int(hits[left]) - int(hits[right])
+            delta = max(abs(meta[left] - baseline[left]), abs(meta[right] - baseline[right]))
+            strength_label = ("<0.02" if delta < .02 else "0.02-0.05" if delta < .05
+                              else "0.05-0.10" if delta < .10 else ">=0.10")
+            mean_p = (baseline[left] + baseline[right]) / 2
+            probability_label = ("33-40%" if mean_p < .40 else "40-45%" if mean_p < .45
+                                 else "45-50%" if mean_p < .50 else "50-60%"
+                                 if mean_p < .60 else "60%+")
+            for audit in (total, strength[strength_label], probability[probability_label]):
+                audit["cases"] += 1
+                if not result_order:
+                    audit["neutral"] += 1
+                elif result_order == meta_order:
+                    audit["meta_wins"] += 1
+                else:
+                    audit["baseline_wins"] += 1
+        # Online updates preserve the expanding temporal cutoff without repeatedly
+        # refitting thousands of already-seen examples at every contest.
+        coefficients = fit_top1_meta([games], epochs=4, learning_rate=.03,
+                                     initial=coefficients)
+    return {
+        "feature_names": list(META_FEATURE_NAMES),
+        "coefficients": fit_top1_meta(ordered),
+        "observations": observations,
+        "baseline_brier": round(baseline_brier / observations, 8),
+        "meta_brier": round(meta_brier / observations, 8),
+        "disagreement": _audit_summary(total),
+        "disagreement_by_strength": {key: _audit_summary(value)
+                                      for key, value in strength.items()},
+        "disagreement_by_p_top1": {key: _audit_summary(value)
+                                    for key, value in probability.items()},
+        "promoted_to_ticket": False,
     }
 
 
@@ -408,8 +537,9 @@ def train(history_path: str, model_path: str,
     for games in contests.values():
         for game in games:
             rank_hits[game.ranking.index(game.actual)] += 1
+    top1_meta = walk_forward_top1_meta(contests)
     model = {
-        "version": 6, "selected_policy": selected,
+        "version": 7, "selected_policy": selected,
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
             "minimum_history": MIN_WALK_FORWARD_CONTESTS,
@@ -419,6 +549,7 @@ def train(history_path: str, model_path: str,
         "position_rank_hit_rates": position_rank_hit_rates(list(contests.values())),
         "rank_hit_rates": [round(count / sum(rank_hits), 6) for count in rank_hits],
         "probability_diagnostics": probability_diagnostics(contests),
+        "top1_meta": top1_meta,
         "top1_reliability": {
             "walk_forward_disagreement": walk_forward_reliability(contests),
             "contexts": [
