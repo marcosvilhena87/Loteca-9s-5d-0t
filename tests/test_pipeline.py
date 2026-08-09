@@ -5,7 +5,8 @@ from pathlib import Path
 from scripts.common import Match, threshold_probability, ticket_metrics
 from scripts.predict_results import optimize
 from scripts.train_model import (exact_ticket, heuristic_ticket, probability_diagnostics,
-                                 ticket_metrics_for, train)
+                                 historical_ticket, position_rank_hit_rates,
+                                 ticket_metrics_for, train, walk_forward_backtest)
 
 
 class PipelineTests(unittest.TestCase):
@@ -67,6 +68,33 @@ class PipelineTests(unittest.TestCase):
     def test_probability_diagnostics_rejects_invalid_bin_count(self):
         with self.assertRaises(ValueError):
             probability_diagnostics({}, calibration_bins=1)
+
+    def test_historical_policies_allocate_doubles_from_position_scores(self):
+        games = [Match(2, i + 1, "A", "B", {"1": .5, "X": .3, "2": .2})
+                 for i in range(14)]
+        rates = [[.8 - i / 100, .1 + i / 100, .1] for i in range(14)]
+        top1_ticket, _ = historical_ticket(games, "hist_top1", rates)
+        top2_ticket, _ = historical_ticket(games, "hist_top2", rates)
+        self.assertEqual([i for i, pick in enumerate(top1_ticket) if len(pick) == 2],
+                         [9, 10, 11, 12, 13])
+        self.assertEqual(top1_ticket, top2_ticket)
+        self.assertEqual(sum(map(len, top1_ticket)), 19)
+
+    def test_position_rates_use_only_supplied_contests(self):
+        past = [Match(1, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1}, "1")
+                for i in range(14)]
+        future = [Match(2, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1}, "X")
+                  for i in range(14)]
+        self.assertEqual(position_rank_hit_rates([past]), [[.5, .25, .25]] * 14)
+        self.assertEqual(position_rank_hit_rates([past, future]), [[.4, .4, .2]] * 14)
+
+    def test_walk_forward_reports_only_out_of_sample_contests(self):
+        contests = {}
+        for concurso in range(1, 4):
+            contests[concurso] = [Match(concurso, i + 1, "A", "B",
+                {"1": .6, "X": .3, "2": .1}, "1") for i in range(14)]
+        result = walk_forward_backtest(contests, minimum_history=2)
+        self.assertTrue(all(values["hits"] == 14 for values in result.values()))
 
 
 if __name__ == "__main__":

@@ -9,7 +9,10 @@ from pathlib import Path
 
 from scripts.common import Match, group_contests, normalize_team, read_matches, ticket_metrics
 
-POLICIES = ("gain", "uncertainty", "margin", "ratio")
+PROBABILITY_POLICIES = ("gain", "uncertainty", "margin", "ratio")
+HISTORICAL_POLICIES = ("hist_top1", "hist_top2")
+POLICIES = (*PROBABILITY_POLICIES, *HISTORICAL_POLICIES)
+MIN_WALK_FORWARD_CONTESTS = 30
 
 
 def probability_diagnostics(contests: dict[int, list[Match]],
@@ -143,6 +146,77 @@ def heuristic_ticket(games: list[Match], policy: str) -> tuple[list[set[str]], l
     return build_ticket(games, indexes)
 
 
+def position_rank_hit_rates(contests: list[list[Match]]) -> list[list[float]]:
+    """Estimate position/rank rates using only the supplied past contests.
+
+    A Dirichlet(1, 1, 1) prior keeps the ordering stable when the walk-forward
+    window is still small and prevents zero-frequency conclusions.
+    """
+    counts = [[1, 1, 1] for _ in range(14)]
+    for games in contests:
+        for game in games:
+            if game.actual not in ("1", "X", "2"):
+                raise ValueError("score histórico exige resultados reais")
+            counts[game.jogo - 1][game.ranking.index(game.actual)] += 1
+    return [[count / sum(row) for count in row] for row in counts]
+
+
+def historical_ticket(games: list[Match], policy: str,
+                      rates: list[list[float]]) -> tuple[list[set[str]], list[str]]:
+    """Allocate doubles from historical position evidence.
+
+    ``hist_top1`` protects the five positions where Top1 has been least reliable;
+    ``hist_top2`` covers the five positions where Top2 has hit most often.
+    Results used to estimate ``rates`` are intentionally supplied by the caller,
+    allowing the trainer to enforce a leak-free walk-forward cutoff.
+    """
+    if policy not in HISTORICAL_POLICIES:
+        raise ValueError(f"política histórica inválida: {policy}")
+    if len(rates) != 14 or any(len(row) != 3 for row in rates):
+        raise ValueError("score histórico exige uma matriz 14 x 3")
+    rank_index = 0 if policy == "hist_top1" else 1
+    indexes = set(sorted(
+        range(14),
+        key=lambda i: ((rates[i][rank_index] if policy == "hist_top1"
+                        else -rates[i][rank_index]), i),
+    )[:5])
+    return build_ticket(games, indexes)
+
+
+def ticket_for_policy(games: list[Match], policy: str,
+                      rates: list[list[float]] | None = None) -> tuple[list[set[str]], list[str]]:
+    if policy == "exact":
+        return exact_ticket(games)
+    if policy in HISTORICAL_POLICIES:
+        if rates is None:
+            raise ValueError("política histórica exige scores por posição")
+        return historical_ticket(games, policy, rates)
+    return heuristic_ticket(games, policy)
+
+
+def walk_forward_backtest(contests: dict[int, list[Match]],
+                          minimum_history: int = MIN_WALK_FORWARD_CONTESTS
+                          ) -> dict[str, dict[str, int]]:
+    """Compare every policy prospectively, never learning from the test contest."""
+    ordered = [contests[key] for key in sorted(contests)]
+    if not 1 <= minimum_history < len(ordered):
+        raise ValueError("janela inicial inválida para walk-forward")
+    strategies = (*POLICIES, "exact")
+    evaluations = {policy: {"14": 0, "13": 0, "hits": 0}
+                   for policy in strategies}
+    for index in range(minimum_history, len(ordered)):
+        rates = position_rank_hit_rates(ordered[:index])
+        games = ordered[index]
+        for policy in strategies:
+            ticket, _ = ticket_for_policy(games, policy, rates)
+            hits = sum(game.actual in selection
+                       for game, selection in zip(games, ticket))
+            evaluations[policy]["hits"] += hits
+            evaluations[policy]["14"] += hits == 14
+            evaluations[policy]["13"] += hits == 13
+    return evaluations
+
+
 def exact_ticket(games: list[Match]) -> tuple[list[set[str]], list[str]]:
     """Evaluate all C(14, 5)=2,002 allocations and maximize P(>=13)."""
     if len(games) != 14:
@@ -174,16 +248,7 @@ def exact_ticket(games: list[Match]) -> tuple[list[set[str]], list[str]]:
 
 def train(history_path: str, model_path: str) -> dict[str, object]:
     contests = group_contests(read_matches(history_path, require_actual=True))
-    evaluations = {}
-    for policy in (*POLICIES, "exact"):
-        totals = {"14": 0, "13": 0, "hits": 0}
-        for games in contests.values():
-            ticket, _ = exact_ticket(games) if policy == "exact" else heuristic_ticket(games, policy)
-            hits = sum(game.actual in selection for game, selection in zip(games, ticket))
-            totals["hits"] += hits
-            totals["14"] += hits == 14
-            totals["13"] += hits == 13
-        evaluations[policy] = totals
+    evaluations = walk_forward_backtest(contests)
     # Main goal first, then perfect tickets and aggregate hits as stable tie-breakers.
     strategies = (*POLICIES, "exact")
     selected = max(strategies, key=lambda p: (
@@ -195,8 +260,14 @@ def train(history_path: str, model_path: str) -> dict[str, object]:
         for game in games:
             rank_hits[game.ranking.index(game.actual)] += 1
     model = {
-        "version": 3, "selected_policy": selected,
+        "version": 4, "selected_policy": selected,
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
+        "walk_forward": {
+            "minimum_history": MIN_WALK_FORWARD_CONTESTS,
+            "test_contests": len(contests) - MIN_WALK_FORWARD_CONTESTS,
+            "no_future_information": True,
+        },
+        "position_rank_hit_rates": position_rank_hit_rates(list(contests.values())),
         "rank_hit_rates": [round(count / sum(rank_hits), 6) for count in rank_hits],
         "probability_diagnostics": probability_diagnostics(contests),
     }
