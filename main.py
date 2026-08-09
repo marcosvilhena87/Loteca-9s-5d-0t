@@ -22,6 +22,10 @@ def main() -> None:
     diagnostics = model["probability_diagnostics"]
     print(f"[CALIBRATION] Brier: {diagnostics['multiclass_brier']:.6f} | "
           f"Log Loss: {diagnostics['log_loss']:.6f} | ECE: {diagnostics['ece']:.6f}")
+    for metric, audit in model["top1_reliability"]["walk_forward_disagreement"].items():
+        print(f"[DISAGREEMENT] {metric}: {audit['cases']} casos | "
+              f"baseline {audit['baseline_wins']} x histórico {audit['historical_wins']} | "
+              f"neutros {audit['neutral']} | win rate {audit['historical_win_rate']:.2%}")
     predict(args.next_contest, args.model, args.output)
 
 

@@ -3,10 +3,12 @@ import unittest
 from pathlib import Path
 
 from scripts.common import Match, threshold_probability, ticket_metrics
-from scripts.predict_results import optimize
+from scripts.predict_results import optimize, predict
 from scripts.train_model import (exact_ticket, heuristic_ticket, probability_diagnostics,
                                  historical_ticket, position_rank_hit_rates,
-                                 ticket_metrics_for, train, walk_forward_backtest)
+                                 reliability_scores, ticket_metrics_for,
+                                 top1_reliability_model, train, walk_forward_backtest,
+                                 walk_forward_reliability)
 
 
 class PipelineTests(unittest.TestCase):
@@ -111,6 +113,40 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(rows), 8)  # header + seven strategies for one test contest
         self.assertIn("p13_plus_empirical;p12_plus_empirical;double_games;ticket", rows[0])
         self.assertTrue(all("T1=14|T2=5|T3=0" in row for row in rows[1:]))
+
+    def test_reliability_scores_correct_top1_from_historical_context(self):
+        past = [[Match(1, i + 1, "A", "B", {"1": .5, "X": .3, "2": .2}, "1")
+                 for i in range(14)]]
+        game = Match(2, 1, "A", "B", {"1": .5, "X": .3, "2": .2})
+        scores = reliability_scores(game, top1_reliability_model(past))
+        self.assertGreater(scores["top1_residual"], .5)
+        self.assertGreater(scores["top1_lift"], .5)
+        self.assertAlmostEqual(scores["top1_reliability"], 15 / 16)
+
+    def test_disagreement_audit_is_walk_forward_and_well_formed(self):
+        contests = {}
+        for concurso in range(1, 4):
+            contests[concurso] = [Match(concurso, i + 1, "A", "B",
+                {"1": .55 if i % 2 else .45, "X": .30, "2": .15 if i % 2 else .25},
+                "1" if (concurso + i) % 2 else "X") for i in range(14)]
+        audit = walk_forward_reliability(contests, minimum_history=2)
+        self.assertEqual(set(audit), {"top1_residual", "top1_lift", "top1_reliability"})
+        for values in audit.values():
+            self.assertEqual(values["cases"], values["baseline_wins"] +
+                             values["historical_wins"] + values["neutral"])
+            self.assertGreaterEqual(values["historical_win_rate"], 0.0)
+            self.assertLessEqual(values["historical_win_rate"], 1.0)
+
+    def test_prediction_exports_reliability_telemetry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model_path = Path(directory) / "model.json"
+            output_path = Path(directory) / "predictions.csv"
+            train("data/concursos_anteriores.csv", str(model_path), backtest_path=None)
+            rows = predict("data/proximo_concurso.csv", str(model_path),
+                           str(output_path), verbose=False)
+        self.assertEqual(len(rows), 14)
+        self.assertTrue(all("top1_residual" in row and "top1_lift" in row and
+                            "top1_reliability" in row for row in rows))
 
 
 if __name__ == "__main__":

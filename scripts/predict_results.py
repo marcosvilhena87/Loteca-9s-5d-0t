@@ -8,7 +8,8 @@ from pathlib import Path
 
 from scripts.common import Match, read_matches
 from scripts.train_model import (HISTORICAL_POLICIES, exact_ticket, historical_ticket,
-                                 heuristic_ticket, ticket_metrics_for)
+                                 heuristic_ticket, reliability_context, reliability_scores,
+                                 ticket_metrics_for)
 
 
 def optimize(games: list[Match], policy: str,
@@ -28,6 +29,13 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
     games = sorted(read_matches(input_path), key=lambda game: game.jogo)
     model = json.loads(Path(model_path).read_text(encoding="utf-8"))
     position_rates = model.get("position_rank_hit_rates")
+    reliability_model = {
+        (context["p_top1_bin"], context["margin_bin"], context["top1_result"]): {
+            "count": context["count"], "observed_rate": context["observed_rate"],
+            "mean_p_top1": context["mean_p_top1"],
+        }
+        for context in model.get("top1_reliability", {}).get("contexts", [])
+    }
     ticket, notes = optimize(games, model["selected_policy"], position_rates)
     gains = [game.probabilities[game.ranking[1]] for game in games]
     gain_ranks = {index: rank for rank, index in enumerate(
@@ -36,6 +44,8 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
     rows = []
     for index, (game, selection) in enumerate(zip(games, ticket)):
         ranking = game.ranking
+        historical_scores = reliability_scores(game, reliability_model)
+        context = reliability_context(game)
         ordered_pick = "".join(result for result in ("1", "X", "2") if result in selection)
         rows.append({
             "concurso": game.concurso, "jogo": game.jogo, "mandante": game.mandante,
@@ -51,6 +61,10 @@ def predict(input_path: str, model_path: str, output_path: str, verbose: bool = 
                                 if position_rates else ""),
             "score_hist_top2": (f"{position_rates[index][1]:.6f}"
                                 if position_rates else ""),
+            "top1_residual": f"{historical_scores['top1_residual']:.6f}",
+            "top1_lift": f"{historical_scores['top1_lift']:.6f}",
+            "top1_reliability": f"{historical_scores['top1_reliability']:.6f}",
+            "reliability_context": f"p{context[0]}-m{context[1]}-{context[2]}",
         })
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)

@@ -15,6 +15,108 @@ PROBABILITY_POLICIES = ("gain", "uncertainty", "margin", "ratio")
 HISTORICAL_POLICIES = ("hist_top1", "hist_top2")
 POLICIES = (*PROBABILITY_POLICIES, *HISTORICAL_POLICIES)
 MIN_WALK_FORWARD_CONTESTS = 30
+RELIABILITY_METRICS = ("top1_residual", "top1_lift", "top1_reliability")
+P_TOP1_BINS = (0.40, 0.45, 0.50, 0.60)
+MARGIN_BINS = (0.05, 0.10, 0.20)
+
+
+def _bin_index(value: float, boundaries: tuple[float, ...]) -> int:
+    return sum(value >= boundary for boundary in boundaries)
+
+
+def reliability_context(game: Match) -> tuple[int, int, str]:
+    """Return the probability-only context used to calibrate Top1 confidence."""
+    top1, top2, _ = game.ranking
+    return (
+        _bin_index(game.probabilities[top1], P_TOP1_BINS),
+        _bin_index(game.probabilities[top1] - game.probabilities[top2], MARGIN_BINS),
+        top1,
+    )
+
+
+def top1_reliability_model(contests: list[list[Match]]) -> dict[tuple[int, int, str], dict[str, float]]:
+    """Learn leak-free, smoothed Top1 reliability statistics by context.
+
+    A Beta(1, 1) prior prevents sparse contexts from producing confidence zero
+    or one.  The mean forecast is tracked separately so residual and lift correct
+    the baseline rather than replacing it.
+    """
+    buckets: dict[tuple[int, int, str], dict[str, float]] = {}
+    for games in contests:
+        for game in games:
+            if game.actual not in ("1", "X", "2"):
+                raise ValueError("confiabilidade exige resultados reais")
+            key = reliability_context(game)
+            bucket = buckets.setdefault(key, {"count": 0.0, "hits": 0.0, "p_sum": 0.0})
+            bucket["count"] += 1
+            bucket["hits"] += game.actual == game.ranking[0]
+            bucket["p_sum"] += game.probabilities[game.ranking[0]]
+    return {
+        key: {
+            "count": bucket["count"],
+            "observed_rate": (bucket["hits"] + 1) / (bucket["count"] + 2),
+            "mean_p_top1": bucket["p_sum"] / bucket["count"],
+        }
+        for key, bucket in buckets.items()
+    }
+
+
+def reliability_scores(game: Match, model: dict[tuple[int, int, str], dict[str, float]]) -> dict[str, float]:
+    """Score Top1 with historical corrections, falling back safely to baseline."""
+    p_top1 = game.probabilities[game.ranking[0]]
+    bucket = model.get(reliability_context(game))
+    if bucket is None:
+        return {metric: p_top1 for metric in RELIABILITY_METRICS}
+    observed = bucket["observed_rate"]
+    mean_probability = bucket["mean_p_top1"]
+    return {
+        "top1_residual": min(1.0, max(0.0, p_top1 + observed - mean_probability)),
+        "top1_lift": min(1.0, max(0.0, p_top1 * observed / mean_probability)),
+        "top1_reliability": observed,
+    }
+
+
+def walk_forward_reliability(contests: dict[int, list[Match]],
+                             minimum_history: int = MIN_WALK_FORWARD_CONTESTS
+                             ) -> dict[str, dict[str, int | float]]:
+    """Run the README disagreement test using only earlier contests.
+
+    Only informative pairs (exactly one Top1 hit) count as a win. Pairs tied by
+    either ordering are neutral, making the comparison explicit and reproducible.
+    """
+    ordered = [contests[key] for key in sorted(contests)]
+    if not 1 <= minimum_history < len(ordered):
+        raise ValueError("janela inicial inválida para walk-forward")
+    totals = {metric: {"cases": 0, "baseline_wins": 0, "historical_wins": 0,
+                       "neutral": 0} for metric in RELIABILITY_METRICS}
+    for index in range(minimum_history, len(ordered)):
+        model = top1_reliability_model(ordered[:index])
+        games = ordered[index]
+        baseline = [game.probabilities[game.ranking[0]] for game in games]
+        scores = [reliability_scores(game, model) for game in games]
+        hits = [game.actual == game.ranking[0] for game in games]
+        for metric in RELIABILITY_METRICS:
+            for left, right in combinations(range(len(games)), 2):
+                baseline_order = (baseline[left] > baseline[right]) - (baseline[left] < baseline[right])
+                historical_order = ((scores[left][metric] > scores[right][metric]) -
+                                    (scores[left][metric] < scores[right][metric]))
+                if not baseline_order or not historical_order or baseline_order == historical_order:
+                    continue
+                result_order = int(hits[left]) - int(hits[right])
+                audit = totals[metric]
+                audit["cases"] += 1
+                if not result_order:
+                    audit["neutral"] += 1
+                elif result_order == historical_order:
+                    audit["historical_wins"] += 1
+                else:
+                    audit["baseline_wins"] += 1
+    for audit in totals.values():
+        informative = audit["historical_wins"] + audit["baseline_wins"]
+        audit["historical_win_rate"] = round(
+            audit["historical_wins"] / informative, 8
+        ) if informative else 0.0
+    return totals
 
 
 def probability_diagnostics(contests: dict[int, list[Match]],
@@ -307,7 +409,7 @@ def train(history_path: str, model_path: str,
         for game in games:
             rank_hits[game.ranking.index(game.actual)] += 1
     model = {
-        "version": 5, "selected_policy": selected,
+        "version": 6, "selected_policy": selected,
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
             "minimum_history": MIN_WALK_FORWARD_CONTESTS,
@@ -317,6 +419,14 @@ def train(history_path: str, model_path: str,
         "position_rank_hit_rates": position_rank_hit_rates(list(contests.values())),
         "rank_hit_rates": [round(count / sum(rank_hits), 6) for count in rank_hits],
         "probability_diagnostics": probability_diagnostics(contests),
+        "top1_reliability": {
+            "walk_forward_disagreement": walk_forward_reliability(contests),
+            "contexts": [
+                {"p_top1_bin": key[0], "margin_bin": key[1], "top1_result": key[2],
+                 **{name: round(value, 8) for name, value in values.items()}}
+                for key, values in sorted(top1_reliability_model(list(contests.values())).items())
+            ],
+        },
     }
     destination = Path(model_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
