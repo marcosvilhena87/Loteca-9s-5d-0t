@@ -186,18 +186,23 @@ Cálculo de P(>=13)
 Palpite final
 ```
 
-As políticas de alocação atualmente comparadas são:
+As estratégias de alocação atualmente comparadas são:
 
 ```text
 gain
 uncertainty
 margin
 ratio
+exact
 ```
 
 Cada política atribui um score às 14 partidas e escolhe os 5 jogos de maior prioridade para receber duplo.
 
-### Critério atual de seleção da política
+`exact` avalia exaustivamente as 2.002 combinações de cinco duplos e maximiza
+`P(>=13)`, usando `P(14)`, acertos esperados e concentração nos primeiros jogos
+como desempates determinísticos. As demais estratégias permanecem como benchmarks.
+
+### Critério atual de seleção da estratégia
 
 A política vencedora é escolhida priorizando:
 
@@ -371,16 +376,16 @@ Isso permite entender claramente por que uma partida recebeu um dos cinco duplos
 
 ## Prioridade 1 — Consistência do pipeline
 
-- [ ] aplicar as mesmas Hard e Soft Constraints no backtest e na previsão;
-- [ ] criar uma função única para construção do ticket final;
-- [ ] garantir invariantes: 9 secos, 5 duplos, 0 triplos e 19 marcações.
+- [x] aplicar as mesmas Hard e Soft Constraints no backtest e na previsão;
+- [x] criar uma função única para construção do ticket final;
+- [x] garantir invariantes: 9 secos, 5 duplos, 0 triplos e 19 marcações.
 
 ## Prioridade 2 — Otimizador exato
 
-- [ ] gerar as 2.002 combinações possíveis de cinco duplos;
-- [ ] calcular `P(14)`, `P(13)` e `P(>=13)` para cada combinação;
-- [ ] selecionar diretamente a combinação com melhor objetivo;
-- [ ] comparar o resultado com `gain`, `uncertainty`, `margin` e `ratio`.
+- [x] gerar as 2.002 combinações possíveis de cinco duplos;
+- [x] calcular `P(14)`, `P(13)` e `P(>=13)` para cada combinação;
+- [x] selecionar diretamente a combinação com melhor objetivo;
+- [x] comparar o resultado com `gain`, `uncertainty`, `margin` e `ratio`.
 
 ## Prioridade 3 — Backtest completo
 
