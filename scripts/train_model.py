@@ -3,12 +3,76 @@
 from __future__ import annotations
 
 import json
+import math
 from itertools import combinations
 from pathlib import Path
 
 from scripts.common import Match, group_contests, normalize_team, read_matches, ticket_metrics
 
 POLICIES = ("gain", "uncertainty", "margin", "ratio")
+
+
+def probability_diagnostics(contests: dict[int, list[Match]],
+                            calibration_bins: int = 10) -> dict[str, object]:
+    """Measure probability quality without using any post-result information.
+
+    Brier and log loss evaluate all three outcomes.  ECE groups the 3*N outcome
+    probabilities into equal-width bins; empty bins are omitted from the audit
+    trail.  The position matrix is deliberately descriptive: it is not fed back
+    into ticket generation before a walk-forward validation exists.
+    """
+    if calibration_bins < 2:
+        raise ValueError("calibration_bins deve ser pelo menos 2")
+    games = [game for contest in contests.values() for game in contest]
+    if not games or any(game.actual not in ("1", "X", "2") for game in games):
+        raise ValueError("diagnóstico exige resultados históricos válidos")
+
+    epsilon = 1e-15
+    brier = 0.0
+    log_loss = 0.0
+    bins = [{"count": 0, "probability_sum": 0.0, "hits": 0}
+            for _ in range(calibration_bins)]
+    position_counts = [[0, 0, 0] for _ in range(14)]
+    position_totals = [0] * 14
+    for game in games:
+        log_loss -= math.log(max(game.probabilities[game.actual], epsilon))
+        for result, probability in game.probabilities.items():
+            observed = int(result == game.actual)
+            brier += (probability - observed) ** 2
+            index = min(int(probability * calibration_bins), calibration_bins - 1)
+            bins[index]["count"] += 1
+            bins[index]["probability_sum"] += probability
+            bins[index]["hits"] += observed
+        position_counts[game.jogo - 1][game.ranking.index(game.actual)] += 1
+        position_totals[game.jogo - 1] += 1
+
+    calibration = []
+    ece = 0.0
+    observations = len(games) * 3
+    for index, bucket in enumerate(bins):
+        if not bucket["count"]:
+            continue
+        mean_probability = bucket["probability_sum"] / bucket["count"]
+        observed_rate = bucket["hits"] / bucket["count"]
+        ece += bucket["count"] / observations * abs(mean_probability - observed_rate)
+        calibration.append({
+            "lower": round(index / calibration_bins, 6),
+            "upper": round((index + 1) / calibration_bins, 6),
+            "count": bucket["count"],
+            "mean_probability": round(mean_probability, 6),
+            "observed_rate": round(observed_rate, 6),
+        })
+    position_rank_hit_rates = [
+        [round(count / total, 6) for count in counts]
+        for counts, total in zip(position_counts, position_totals)
+    ]
+    return {
+        "multiclass_brier": round(brier / len(games), 6),
+        "log_loss": round(log_loss / len(games), 6),
+        "ece": round(ece, 6),
+        "calibration_bins": calibration,
+        "position_rank_hit_rates": position_rank_hit_rates,
+    }
 
 
 def priority(match: Match, policy: str) -> float:
@@ -131,9 +195,10 @@ def train(history_path: str, model_path: str) -> dict[str, object]:
         for game in games:
             rank_hits[game.ranking.index(game.actual)] += 1
     model = {
-        "version": 2, "selected_policy": selected,
+        "version": 3, "selected_policy": selected,
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "rank_hit_rates": [round(count / sum(rank_hits), 6) for count in rank_hits],
+        "probability_diagnostics": probability_diagnostics(contests),
     }
     destination = Path(model_path)
     destination.parent.mkdir(parents=True, exist_ok=True)

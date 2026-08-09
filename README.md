@@ -725,6 +725,21 @@ Top1 >60%
 
 para comparar probabilidade prevista e frequência observada.
 
+O treinamento agora registra no `model.json` um diagnóstico reproduzível com:
+
+```text
+multiclass_brier
+log_loss
+ece
+calibration_bins (probabilidade média × frequência observada)
+position_rank_hit_rates (J01..J14 × Top1/Top2/Top3)
+```
+
+Essas medidas são apenas telemetria nesta etapa: nenhuma informação do resultado
+real é usada para montar o ticket. A matriz posicional só deverá alimentar uma
+estratégia após validação walk-forward, evitando transformar ruído histórico em
+uma falsa melhora de P(13+).
+
 ---
 
 # Telemetria e auditoria
@@ -891,6 +906,8 @@ P(13) e P(14) validados
 - [x] `exact` com 2.002 combinações;
 - [x] `P(14)`, `P(13)`, `P(>=13)` e `E[acertos]`;
 - [x] ganho marginal dos duplos.
+- [x] Brier multiclasse, Log Loss, ECE e bins de calibração;
+- [x] matriz histórica posição × ranking para auditoria (sem uso preditivo prematuro).
 
 ## Próximas prioridades
 
