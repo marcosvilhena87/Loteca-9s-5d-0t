@@ -95,6 +95,22 @@ class PipelineTests(unittest.TestCase):
                 {"1": .6, "X": .3, "2": .1}, "1") for i in range(14)]
         result = walk_forward_backtest(contests, minimum_history=2)
         self.assertTrue(all(values["hits"] == 14 for values in result.values()))
+        self.assertTrue(all(values["p13_plus_empirical"] == 1.0 for values in result.values()))
+        self.assertTrue(all(values["14"] == 1 and values["<=9"] == 0
+                            for values in result.values()))
+
+    def test_walk_forward_exports_contest_level_audit(self):
+        contests = {}
+        for concurso in range(1, 4):
+            contests[concurso] = [Match(concurso, i + 1, "A", "B",
+                {"1": .6, "X": .3, "2": .1}, "1") for i in range(14)]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "backtest.csv"
+            walk_forward_backtest(contests, minimum_history=2, output_path=output)
+            rows = output.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(rows), 8)  # header + seven strategies for one test contest
+        self.assertIn("p13_plus_empirical;p12_plus_empirical;double_games;ticket", rows[0])
+        self.assertTrue(all("T1=14|T2=5|T3=0" in row for row in rows[1:]))
 
 
 if __name__ == "__main__":
