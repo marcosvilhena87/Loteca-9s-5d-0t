@@ -7,8 +7,9 @@ from scripts.predict_results import optimize, predict
 from scripts.train_model import (exact_ticket, heuristic_ticket, probability_diagnostics,
                                  historical_ticket, position_rank_hit_rates,
                                  reliability_scores, ticket_metrics_for,
+                                 top1_meta_features, top1_meta_score,
                                  top1_reliability_model, train, walk_forward_backtest,
-                                 walk_forward_reliability)
+                                 walk_forward_reliability, walk_forward_top1_meta)
 
 
 class PipelineTests(unittest.TestCase):
@@ -147,6 +148,25 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(rows), 14)
         self.assertTrue(all("top1_residual" in row and "top1_lift" in row and
                             "top1_reliability" in row for row in rows))
+        self.assertTrue(all("p_top1_meta" in row and "top1_meta_delta" in row
+                            for row in rows))
+
+    def test_top1_meta_features_and_score_are_well_formed(self):
+        game = Match(1, 1, "A", "B", {"1": .5, "X": .3, "2": .2})
+        features = top1_meta_features(game)
+        self.assertEqual(len(features), 10)
+        self.assertEqual(features[0], 1.0)
+        self.assertAlmostEqual(top1_meta_score(game, [0.0] * 10), .5)
+
+    def test_top1_meta_walk_forward_has_no_future_observations(self):
+        contests = {}
+        for concurso in range(1, 4):
+            contests[concurso] = [Match(concurso, i + 1, "A", "B",
+                {"1": .6, "X": .3, "2": .1}, "1") for i in range(14)]
+        audit = walk_forward_top1_meta(contests, minimum_history=2)
+        self.assertEqual(audit["observations"], 14)
+        self.assertFalse(audit["promoted_to_ticket"])
+        self.assertEqual(audit["feature_names"][0], "intercept")
 
 
 if __name__ == "__main__":

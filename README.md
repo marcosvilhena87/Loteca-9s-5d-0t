@@ -785,9 +785,9 @@ python -m unittest discover -v
 
 ## Próximas prioridades — ordem prática
 
-1. [ ] implementar `p(top1_meta)`;
-2. [ ] implementar disagreement por intensidade;
-3. [ ] implementar disagreement por faixa de `p(Top1)`;
+1. [x] implementar `p(top1_meta)`;
+2. [x] implementar disagreement por intensidade;
+3. [x] implementar disagreement por faixa de `p(Top1)`;
 4. [ ] bootstrap + IC95% do disagreement;
 5. [ ] congelar como benchmark métricas históricas que permaneçam <=50%;
 6. [ ] implementar `error_recovery_score` para Top2 e Top3;
@@ -863,3 +863,20 @@ PALPITE FINAL
 ```
 
 > **O histórico não deve substituir o sinal probabilístico por intuição; deve provar onde consegue melhorar aquilo que a probabilidade ainda não resolve.**
+
+## Implementação de `p(top1_meta)`
+
+O pipeline agora treina uma regressão logística regularizada e determinística com
+as nove features pré-jogo propostas acima. A avaliação é feita em walk-forward,
+com atualização online somente depois de conhecido o resultado do concurso testado.
+O artefato registra Brier do baseline e do meta-modelo, disagreement global,
+segmentação por intensidade e por faixa de `p(Top1)`.
+
+Por segurança, `promoted_to_ticket=false`: a nova telemetria não reordena secos nem
+duplos até demonstrar ganho incremental fora da amostra. O CSV de previsão expõe
+`p_top1_meta` e `top1_meta_delta` para auditoria.
+
+No walk-forward atual (5.810 jogos), o meta-modelo obteve Brier `0.240629`
+contra `0.233977` do baseline e venceu `44.01%` dos pares informativos em que
+as ordenações discordaram. Portanto, a evidência atual confirma a decisão de
+preservar `p(Top1)` no ticket e congelar `p(top1_meta)` como benchmark.
