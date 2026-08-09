@@ -1,31 +1,26 @@
 # Loteca ML — Estratégia 9 Secos / 5 Duplos / 0 Triplos
 
-Projeto de Machine Learning para geração de **um único palpite final da Loteca**, com foco em **maximizar a capacidade de atingir 13 ou 14 acertos**, respeitando a estrutura fixa de:
+Projeto de Machine Learning para geração de **um único palpite final da Loteca**, com foco em **maximizar a capacidade de atingir 13 ou 14 acertos**, respeitando:
 
 - **9 secos**;
 - **5 duplos**;
 - **0 triplos**;
 - **19 marcações** no total.
 
-O projeto combina probabilidades por partida, ranking Top1/Top2/Top3, backtesting histórico, walk-forward, constraints e otimização do ticket completo.
+O projeto combina probabilidades por partida, ranking Top1/Top2/Top3, backtesting histórico, validação walk-forward, constraints e otimização do ticket completo.
 
 ---
 
 # Objetivo
 
-A base histórica é lida de:
+Arquivos principais:
 
 ```text
 data/concursos_anteriores.csv
-```
-
-O próximo concurso é lido de:
-
-```text
 data/proximo_concurso.csv
 ```
 
-Para cada partida são utilizadas probabilidades normalizadas:
+Para cada partida são usadas probabilidades normalizadas:
 
 ```text
 p(1) = vitória do mandante
@@ -35,13 +30,11 @@ p(2) = vitória do visitante
 p(1) + p(X) + p(2) = 1
 ```
 
-O sistema deve produzir somente **um ticket final por concurso**.
+O sistema deve produzir apenas **um ticket final por concurso**.
 
 ---
 
 # Ranking probabilístico
-
-Os três resultados são ordenados da maior para a menor probabilidade:
 
 ```text
 Top1 = resultado mais provável
@@ -49,13 +42,13 @@ Top2 = segundo resultado mais provável
 Top3 = resultado menos provável
 ```
 
-Em caso de empate probabilístico:
+Desempate probabilístico:
 
 ```text
 1 > 2 > X
 ```
 
-No histórico, o resultado real pode ser representado por:
+No histórico, o resultado real é classificado como:
 
 ```text
 top1_hit
@@ -63,7 +56,246 @@ top2_hit
 top3_hit
 ```
 
-Isso permite medir com que frequência o resultado real ocupou cada posição do ranking.
+Na base atual:
+
+```text
+Top1: 51.7817%
+Top2: 26.5329%
+Top3: 21.6854%
+```
+
+---
+
+# Princípio central — p(Top1) é o baseline a ser batido
+
+O `p(Top1)` é a principal referência individual de acerto do projeto.
+
+A pesquisa histórica não deve procurar simplesmente uma métrica diferente de `p(Top1)`. O objetivo é encontrar **informação histórica incremental** capaz de identificar quando o próprio `p(Top1)` está sistematicamente superestimado ou subestimado.
+
+Pergunta central:
+
+> **Existe uma métrica histórica que reordene os jogos melhor que `p(Top1)` e demonstre essa vantagem fora da amostra?**
+
+Uma nova métrica histórica só deve entrar no otimizador se:
+
+```text
+1. superar p(Top1) em walk-forward;
+2. vencer nos casos em que sua ordenação discorda de p(Top1);
+3. melhorar P13+ e/ou P12+ do ticket;
+4. apresentar estabilidade temporal;
+5. não depender de informação futura.
+```
+
+Correlação histórica isolada não é suficiente.
+
+---
+
+# Nova linha prioritária — confiabilidade do Top1
+
+Em vez de substituir `p(Top1)`, o projeto deve tentar **corrigi-lo onde houver erro histórico sistemático**.
+
+## 1. top1_residual
+
+Definição conceitual:
+
+```text
+top1_residual = taxa_histórica_real_de_Top1 - p(Top1)_médio
+```
+
+Exemplo:
+
+```text
+Perfil A
+p(Top1) médio      = 0.45
+Top1 observado     = 0.52
+residual           = +0.07
+
+Perfil B
+p(Top1) médio      = 0.45
+Top1 observado     = 0.39
+residual           = -0.06
+```
+
+Score candidato:
+
+```text
+adjusted_top1_score = p(Top1) + top1_residual
+```
+
+O objetivo é descobrir situações em que um Top1 aparentemente mais fraco é historicamente mais confiável que outro com `p(Top1)` ligeiramente maior.
+
+---
+
+## 2. top1_lift
+
+Definição:
+
+```text
+top1_lift = taxa_histórica_real_de_Top1 / p(Top1)_médio
+```
+
+Interpretação:
+
+```text
+lift > 1 → Top1 historicamente subestimado
+lift < 1 → Top1 historicamente superestimado
+```
+
+Score candidato:
+
+```text
+adjusted_top1_score = p(Top1) × top1_lift
+```
+
+---
+
+## 3. conditional_top1_rate
+
+Estimar:
+
+```text
+P(Top1_hit | contexto)
+```
+
+Contexto inicial sugerido:
+
+```text
+p(Top1)
+p(Top2)
+p(Top3)
+margem Top1-Top2
+entropia
+resultado Top1 = 1/X/2
+```
+
+A posição J01..J14 deve ter prioridade menor que o contexto probabilístico, pois as políticas posicionais puras ainda não demonstraram superioridade.
+
+---
+
+## 4. top1_reliability
+
+Criar uma métrica específica para responder:
+
+> **Quanto devo confiar neste Top1?**
+
+Primeira versão por bins:
+
+```text
+p(Top1):
+33–40%
+40–45%
+45–50%
+50–60%
+60%+
+
+margem Top1-Top2:
+0–5 p.p.
+5–10 p.p.
+10–20 p.p.
+20+ p.p.
+
+Top1:
+1 / X / 2
+```
+
+Score:
+
+```text
+top1_reliability = frequência histórica de Top1_hit no contexto
+```
+
+Os bins devem ser aprendidos somente com concursos anteriores em cada passo walk-forward.
+
+---
+
+# Disagreement Test
+
+A avaliação mais importante das novas métricas históricas será feita nos casos em que elas **discordam da ordenação de `p(Top1)`**.
+
+Considere dois jogos A e B:
+
+```text
+p(Top1_A) > p(Top1_B)
+```
+
+mas a métrica histórica produz:
+
+```text
+historical_score_A < historical_score_B
+```
+
+Esses casos devem ser registrados separadamente.
+
+Saída desejada:
+
+```text
+[DISAGREEMENT]
+metric: top1_residual
+casos: N
+p(top1) venceu: X
+historical_score venceu: Y
+empates/neutros: Z
+historical_win_rate: ...
+```
+
+Uma métrica histórica só demonstra valor incremental quando consegue vencer `p(Top1)` justamente nesses casos de discordância.
+
+---
+
+# Meta-modelo de confiabilidade — p(top1_meta)
+
+Além das fórmulas históricas manuais, testar um modelo secundário cujo alvo seja:
+
+```text
+top1_hit = 1 ou 0
+```
+
+Features iniciais:
+
+```text
+p_top1
+p_top2
+p_top3
+margin_top1_top2
+ratio_top2_top1
+entropy
+top1_is_1
+top1_is_X
+top1_is_2
+```
+
+Saída:
+
+```text
+p(top1_meta) = P(Top1 realmente acertar | contexto)
+```
+
+Fluxo:
+
+```text
+probabilidades originais
+        ↓
+contexto probabilístico
+        ↓
+modelo de confiabilidade
+        ↓
+p(top1_meta)
+        ↓
+ordenação / otimizador
+```
+
+O objetivo não é criar um segundo modelo que ignore `p(Top1)`, mas aprender **quando confiar mais ou menos nele**.
+
+Comparações obrigatórias:
+
+```text
+p(top1)
+vs top1_residual
+vs top1_lift
+vs top1_reliability
+vs conditional_top1_rate
+vs p(top1_meta)
+```
 
 ---
 
@@ -80,32 +312,22 @@ Todo ticket deve conter exatamente:
 19 marcações
 ```
 
-Como:
-
-```text
-9 × 1 + 5 × 2 = 19
-```
-
 ## Flamengo
 
-Quando o **FLAMENGO/RJ** participar do concurso, sua vitória deve obrigatoriamente estar coberta:
+Quando o **FLAMENGO/RJ** participar, sua vitória deve obrigatoriamente estar coberta:
 
 ```text
 Flamengo mandante  → incluir 1
 Flamengo visitante → incluir 2
 ```
 
-A vitória pode aparecer como seco ou dentro de um duplo.
-
 ---
 
-# Soft Constraints
-
-## Palmeiras
+# Soft Constraint — Palmeiras
 
 Favorecer, quando o custo probabilístico for pequeno, soluções que excluam a vitória do **PALMEIRAS/SP**.
 
-O limiar atual é:
+Limiar atual:
 
 ```text
 0.03
@@ -113,35 +335,9 @@ O limiar atual é:
 
 Esse valor deve ser tratado como parâmetro experimental e futuramente otimizado em walk-forward.
 
-## Concentração orientada pelo histórico
-
-A ideia de simplesmente concentrar Top1 nas primeiras posições passa a ser tratada como **hipótese histórica**, e não como vantagem presumida.
-
-Regra conceitual:
-
-> **Favorecer ordenações que concentrem, nas posições prioritárias, os resultados Top1, Top2 e Top3 que historicamente apresentaram maior contribuição para 13+ acertos. A preferência deve ser baseada em evidência de backtest, desempenho por posição e estabilidade fora da amostra, e não em uma ordem fixa previamente definida.**
-
-Devem ser avaliados:
-
-```text
-Top1_hit por posição J01..J14
-Top2_hit por posição J01..J14
-Top3_hit por posição J01..J14
-contribuição para 13+
-maior run consecutiva de Top1
-número de runs
-número de transições Top1↔Top2↔Top3
-fragmentation_score
-concentração nas primeiras N posições
-```
-
-Runs longas e baixa fragmentação só devem influenciar o otimizador se demonstrarem associação consistente com 13+ fora da amostra.
-
 ---
 
 # Estratégias atualmente implementadas
-
-As políticas atuais são:
 
 ```text
 gain
@@ -155,81 +351,60 @@ exact
 
 ## gain
 
-Prioriza maior:
-
 ```text
-p(Top2)
+score = p(Top2)
 ```
 
 ## uncertainty
 
-Prioriza maior:
-
 ```text
-1 - p(Top1)
+score = 1 - p(Top1)
 ```
 
 ## margin
 
-Prioriza menor separação entre Top1 e Top2:
-
 ```text
-1 - (p(Top1) - p(Top2))
+score = 1 - (p(Top1) - p(Top2))
 ```
 
 ## ratio
 
-Prioriza maior:
-
 ```text
-p(Top2) / p(Top1)
+score = p(Top2) / p(Top1)
 ```
 
 ## hist_top1
 
-Protege com duplos as posições em que o Top1 foi historicamente menos confiável.
+Protege com duplos as posições em que Top1 foi historicamente menos confiável.
 
 ## hist_top2
 
-Prioriza posições em que o Top2 apresentou maior taxa histórica de ocorrência.
+Prioriza posições em que Top2 apresentou maior frequência histórica.
 
-As políticas históricas usam suavização Dirichlet e são recalculadas apenas com concursos anteriores em cada passo walk-forward.
+As políticas históricas usam somente concursos anteriores em cada passo walk-forward.
 
 ## exact
 
-Avalia exaustivamente:
+Avalia:
 
 ```text
 C(14,5) = 2.002
 ```
 
-formas de escolher quais cinco partidas recebem duplo.
-
-Para cada combinação calcula:
+alocações de cinco duplos, maximizando principalmente:
 
 ```text
-P(14)
-P(13)
 P(>=13)
-E[acertos]
 ```
 
-Objetivo principal:
-
-```text
-argmax P(>=13)
-```
-
-### Limitação atual do exact
-
-O `exact` atual otimiza **quais cinco jogos recebem duplo**, mas mantém estruturalmente:
+Limitação atual:
 
 ```text
 Seco  = Top1
 Duplo = Top1 + Top2
 ```
 
-Portanto, salvo constraints, a distribuição implícita continua sendo:
+Portanto, salvo constraints:
 
 ```text
 14 marcações Top1
@@ -237,15 +412,11 @@ Portanto, salvo constraints, a distribuição implícita continua sendo:
 0 marcações Top3
 ```
 
-A evolução desejada é permitir que a própria distribuição Top1/Top2/Top3 seja otimizada.
-
 ---
 
 # Walk-forward validation
 
-A seleção atual de políticas é feita em **walk-forward**, evitando usar informação futura.
-
-Fluxo:
+A seleção de políticas é feita sem informação futura:
 
 ```text
 Concursos 1..N     → histórico disponível
@@ -255,7 +426,7 @@ Concurso N+2       → teste
 ...
 ```
 
-Com a base atual:
+Base atual:
 
 ```text
 445 concursos totais
@@ -263,65 +434,43 @@ Com a base atual:
 415 concursos de teste walk-forward
 ```
 
-Em cada concurso de teste, scores históricos são calculados somente com concursos anteriores.
-
 ---
 
 # Estado atual do backtest
 
-Exemplo recente:
+Execução recente:
 
 ```text
-[TRAIN] 445 concursos; Top hits: [0.517817, 0.265329, 0.216854]
+gain
+14: 0 | 13: 6 | 12: 17 | 11: 48 | 10: 73 | <=9: 271
+P13+: 1.445783% | P12+: 5.542169% | média: 8.742169
 
-[BACKTEST]
-gain         → 14: 0 | 13: 6 | hits: 3628
-uncertainty  → 14: 0 | 13: 6 | hits: 3619
-margin       → 14: 0 | 13: 5 | hits: 3621
-ratio        → 14: 0 | 13: 6 | hits: 3616
-hist_top1    → 14: 0 | 13: 5 | hits: 3554
-hist_top2    → 14: 0 | 13: 5 | hits: 3568
-exact        → 14: 0 | 13: 6 | hits: 3614
+uncertainty
+14: 0 | 13: 6 | 12: 19 | 11: 48 | 10: 73 | <=9: 269
+P13+: 1.445783% | P12+: 6.024096% | média: 8.720482
+
+margin
+14: 0 | 13: 5 | 12: 18 | 11: 49 | 10: 75 | <=9: 268
+P13+: 1.204819% | P12+: 5.542169% | média: 8.725301
+
+ratio
+14: 0 | 13: 6 | 12: 17 | 11: 48 | 10: 75 | <=9: 269
+P13+: 1.445783% | P12+: 5.542169% | média: 8.713253
+
+hist_top1
+14: 0 | 13: 5 | 12: 17 | 11: 33 | 10: 59 | <=9: 301
+P13+: 1.204819% | P12+: 5.301205% | média: 8.563855
+
+hist_top2
+14: 0 | 13: 5 | 12: 20 | 11: 36 | 10: 60 | <=9: 294
+P13+: 1.204819% | P12+: 6.024096% | média: 8.597590
+
+exact
+14: 0 | 13: 6 | 12: 18 | 11: 46 | 10: 76 | <=9: 269
+P13+: 1.445783% | P12+: 5.783133% | média: 8.708434
 ```
 
-Frequência histórica do resultado real no ranking:
-
-```text
-Top1: 51.7817%
-Top2: 26.5329%
-Top3: 21.6854%
-```
-
-Os resultados mostram que várias estratégias estão praticamente empatadas em 13+, tornando importante medir incerteza antes de declarar uma política superior.
-
----
-
-# Próxima prioridade — backtest 10–14 completo
-
-Antes de ampliar fortemente a complexidade do otimizador, o backtest deve passar a registrar a distribuição completa de acertos:
-
-```text
-14
-13
-12
-11
-10
-<=9
-```
-
-Além de:
-
-```text
-média
-mediana
-desvio-padrão
-mínimo
-máximo
-P13+ empírico
-P12+ empírico
-```
-
-A seleção entre estratégias deve evoluir de um simples desempate por `hits` para uma hierarquia mais alinhada ao objetivo:
+Com o critério atual:
 
 ```text
 14
@@ -330,77 +479,35 @@ A seleção entre estratégias deve evoluir de um simples desempate por `hits` p
 ↓
 12+
 ↓
-estabilidade fora da amostra
+estabilidade
 ↓
-média de acertos
+média
 ```
 
-Exemplo desejado:
+`uncertainty` é selecionada porque empata em 13+ com `gain`, `ratio` e `exact`, mas apresenta melhor P12+ entre elas.
 
-```text
-[BACKTEST]
-strategy       14   13   12   11   10   <=9   P13+    P12+
-gain            0    6    ?    ?    ?    ?     ...     ...
-uncertainty     0    6    ?    ?    ?    ?     ...     ...
-exact           0    6    ?    ?    ?    ?     ...     ...
-```
-
-Salvar também os resultados concurso a concurso em:
-
-```text
-output/backtest.csv
-```
-
-Campos sugeridos:
-
-```text
-concurso
-strategy
-ordering
-distribution_id
-hits
-hit_14
-hit_13
-hit_12
-p13_plus_empirical
-p12_plus_empirical
-double_games
-ticket
-historical_score
-probability_score
-similarity_score
-```
+As políticas posicionais `hist_top1` e `hist_top2` permanecem como benchmarks; até o momento não superaram as políticas probabilísticas em P13+.
 
 ---
 
 # P13+ e P12+ empíricos
-
-Além das probabilidades teóricas do ticket, registrar as frequências efetivamente observadas no walk-forward.
-
-Exemplo:
 
 ```text
 P13+ empírico = concursos com 13 ou 14 / concursos testados
 P12+ empírico = concursos com 12, 13 ou 14 / concursos testados
 ```
 
-Isso permite distinguir:
+Essas medidas são diferentes das probabilidades teóricas Poisson-binomial do ticket e devem permanecer separadas na telemetria.
+
+Resultados concurso a concurso são salvos em:
 
 ```text
-P(13+) modelado
+output/backtest.csv
 ```
-
-de:
-
-```text
-P13+ observado fora da amostra
-```
-
-As duas medidas devem permanecer separadas na telemetria.
 
 ---
 
-# Incerteza estatística e bootstrap
+# Bootstrap e incerteza estatística
 
 Diferenças pequenas entre estratégias não devem ser interpretadas automaticamente como superioridade.
 
@@ -410,104 +517,56 @@ Implementar:
 bootstrap >= 1.000 reamostragens
 IC95% de P13+
 IC95% de P12+
-IC95% da diferença entre estratégias
+IC95% das diferenças entre estratégias
 estabilidade temporal
 ```
 
-Comparações prioritárias:
+Também aplicar bootstrap às novas métricas de confiabilidade do Top1 e ao Disagreement Test.
+
+Quando não houver evidência suficiente, registrar:
 
 ```text
-gain vs uncertainty
-gain vs ratio
-gain vs exact
-uncertainty vs exact
+estatisticamente indistinguíveis
 ```
-
-Exemplo desejado:
-
-```text
-[BOOTSTRAP]
-gain vs exact
-ΔP13+: +0.00 p.p.
-IC95%: [..., ...]
-Conclusão: estratégias estatisticamente indistinguíveis
-```
-
-Quando não houver evidência suficiente, o sistema deve registrar empate estatístico em vez de escolher um vencedor apenas por poucos acertos agregados.
 
 ---
 
 # Diagnóstico de calibração
 
-O treinamento calcula:
+Métricas atuais:
 
 ```text
-Brier multiclasse
-Log Loss
-ECE
-bins de calibração
-position_rank_hit_rates
+Brier multiclasse: 0.588408
+Log Loss:          0.985557
+ECE:               0.012378
 ```
 
-Exemplo recente:
+O ECE baixo estabelece um baseline probabilístico forte; por isso, qualquer correção histórica de `p(Top1)` deve demonstrar ganho real fora da amostra.
 
-```text
-[CALIBRATION]
-Brier:    0.588408
-Log Loss: 0.985557
-ECE:      0.012378
-```
-
-Nesta etapa essas medidas são diagnósticas e ainda não recalibram as probabilidades usadas na geração do ticket.
-
-## Calibração aplicada
-
-Comparar futuramente:
+Calibração aplicada futura:
 
 ```text
 exact_raw
+vs
 exact_calibrated
 ```
 
-Fluxo:
-
-```text
-probabilidades originais
-        ↓
-calibrador treinado somente no passado
-        ↓
-probabilidades calibradas
-        ↓
-Top1 / Top2 / Top3
-        ↓
-otimizador
-        ↓
-backtest walk-forward
-```
-
-A calibração só deverá ser adotada se melhorar desempenho fora da amostra.
+A calibração só deve ser mantida se melhorar o desempenho walk-forward.
 
 ---
 
 # Métricas probabilísticas do ticket
 
-Para cada jogo é calculada a probabilidade coberta pela marcação.
-
-## Seco
+Para cada jogo:
 
 ```text
-q(i) = P(resultado marcado)
+Seco:  q(i) = P(resultado marcado)
+Duplo: q(i) = P(resultado A) + P(resultado B)
 ```
 
-## Duplo
+A distribuição de acertos é modelada como Poisson-binomial, sob hipótese de independência entre as 14 partidas.
 
-```text
-q(i) = P(resultado A) + P(resultado B)
-```
-
-A distribuição de acertos é tratada como Poisson-binomial, assumindo independência entre os 14 jogos.
-
-Telemetria atual:
+Telemetria:
 
 ```text
 P(14)
@@ -516,120 +575,11 @@ P(>=13)
 E[acertos]
 ```
 
-A hipótese de independência deve permanecer explicitamente documentada enquanto for utilizada.
-
----
-
-# Ganho marginal dos duplos
-
-No desenho atual, transformar um seco Top1 em duplo Top1+Top2 produz:
-
-```text
-ganho marginal = p(Top2)
-```
-
-A saída registra também o ranking de ganho entre os 14 jogos.
-
----
-
-# Colunas e políticas de ordenação
-
-O projeto deve comparar diferentes ordenações e medir o impacto final sobre 13+.
-
-## Probabilísticas
-
-```text
-ord_jogo
-ord_top1_prob
-ord_top2_prob
-ord_top3_prob
-ord_margin
-ord_uncertainty
-ord_entropy
-ord_double_gain
-```
-
-## Históricas
-
-```text
-ord_hist_top1
-ord_hist_top2
-ord_hist_top3
-ord_hist_position
-ord_hist_13plus
-```
-
-## Adaptativas
-
-```text
-ord_knn_13plus
-ord_hybrid
-```
-
-Scores de auditoria sugeridos:
-
-```text
-score_top1_prob
-score_margin
-score_uncertainty
-score_entropy
-score_double_gain
-score_hist_top1
-score_hist_top2
-score_hist_13plus
-score_knn_13plus
-score_hybrid
-```
-
----
-
-# Historical 13+ Score
-
-Próxima política histórica prioritária:
-
-```text
-hist_13plus
-```
-
-Em vez de perguntar apenas:
-
-> qual posição tem mais Top1?
-
-perguntar:
-
-> qual combinação de posição, ranking e perfil de jogo esteve mais associada aos tickets que atingiram 13 ou 14?
-
-Estrutura conceitual inicial:
-
-```text
-historical_13plus_score[posição][ranking]
-```
-
-Evolução possível:
-
-```text
-historical_13plus_score[
-    posição,
-    ranking,
-    faixa_p_top1,
-    faixa_margem,
-    perfil_concurso
-]
-```
-
-Todo score deve ser calculado somente com informação passada e validado por walk-forward.
-
 ---
 
 # Distribution Backtest
 
-A próxima evolução estrutural é deixar de perguntar apenas:
-
-> quais cinco jogos recebem Top2?
-
-para perguntar:
-
-> como as 19 marcações devem ser distribuídas entre Top1, Top2 e Top3 para produzir mais 13+ fora da amostra?
+Após testar as métricas capazes de desafiar `p(Top1)`, ampliar o espaço das 19 marcações.
 
 Testar distribuições como:
 
@@ -644,13 +594,13 @@ T1=12 | T2=6 | T3=1
 Sempre respeitando:
 
 ```text
-19 marcações
 9 secos
 5 duplos
 0 triplos
+19 marcações
 ```
 
-Para cada distribuição registrar:
+Medir:
 
 ```text
 N14
@@ -669,7 +619,7 @@ desvio-padrão
 
 # Duplos flexíveis e secos alternativos
 
-O otimizador deverá poder testar:
+Testar futuramente:
 
 ```text
 Duplo: T1T2 | T1T3 | T2T3
@@ -682,7 +632,7 @@ Top2/Top3 secos ou duplos que excluam Top1 só devem ser usados quando demonstra
 
 # FullMarkingOptimizer
 
-Evolução do `exact` para otimização completa das 19 marcações:
+Evolução do `exact` para otimização completa:
 
 ```text
 14 jogos
@@ -694,7 +644,7 @@ Hard Constraints
    ↓
 9 secos + 5 duplos
    ↓
-Score histórico / probabilístico
+Score probabilístico / histórico incremental
    ↓
 Melhor ticket
 ```
@@ -702,42 +652,38 @@ Melhor ticket
 Comparar:
 
 ```text
-historical_exact
 probability_exact
+historical_exact
 hybrid_exact
 ```
 
-## historical_exact
+No modelo híbrido, o histórico só deve receber peso se demonstrar informação incremental sobre `p(Top1)`.
 
-Maximiza desempenho histórico/out-of-sample para 13+.
+---
 
-## probability_exact
+# Historical 13+ Score
 
-Maximiza `P(>=13)` nas probabilidades atuais.
+`hist_13plus` permanece como linha experimental, mas deixa de ser a primeira prioridade histórica.
 
-## hybrid_exact
+Pergunta:
 
-Combina evidência histórica e probabilidades atuais.
+> qual combinação de posição, ranking e perfil esteve associada a tickets com 13 ou 14?
 
-Forma inicial:
+Essa métrica deve ser comparada contra as métricas de confiabilidade do Top1 e contra `p(Top1)` puro.
 
-```text
-score_total = α × score_probabilidade + (1-α) × score_histórico
-```
-
-`α` deve ser escolhido por walk-forward.
+Ela só deve entrar no otimizador se acrescentar sinal fora da amostra.
 
 ---
 
 # Similaridade histórica / KNN
 
-Criar:
+Criar futuramente:
 
 ```text
 similarity_knn
 ```
 
-Perfil possível do concurso:
+Features possíveis do perfil do concurso:
 
 ```text
 média p(Top1)
@@ -746,158 +692,73 @@ média p(Top3)
 desvio p(Top1)
 entropia média
 margem média Top1-Top2
-número de favoritos > 50%
+número de favoritos fortes
 número de jogos equilibrados
 ```
 
-Fluxo:
-
-```text
-Próximo concurso
-       ↓
-Perfil probabilístico
-       ↓
-K concursos históricos mais semelhantes
-       ↓
-Backtest das estratégias nesse subconjunto
-       ↓
-Estratégia/distribuição candidata
-```
-
-A similaridade deve usar apenas dados disponíveis antes do resultado real.
-
----
-
-# Ensemble de estratégias
-
-Se `gain`, `uncertainty`, `ratio`, `exact` e futuras políticas permanecerem muito próximas, testar um ensemble em vez de forçar um vencedor único.
-
-Exemplo conceitual:
-
-```text
-double_score(i) =
-    w1 × gain_score(i)
-  + w2 × uncertainty_score(i)
-  + w3 × exact_preference(i)
-  + w4 × hist_13plus_score(i)
-```
-
-Os pesos devem ser escolhidos por walk-forward.
-
-O ensemble só deve ser adotado se superar os componentes individualmente fora da amostra.
+A similaridade deve usar apenas informação disponível antes do resultado real.
 
 ---
 
 # Estabilidade temporal
 
-Além do desempenho agregado, medir a distribuição do sucesso ao longo do tempo.
-
-Exemplos:
+Medir desempenho em:
 
 ```text
-primeiro terço do período
+primeiro terço
 segundo terço
 último terço
 ```
 
-ou:
+ou janelas móveis de N concursos.
 
-```text
-janelas móveis de N concursos
-```
-
-Uma estratégia deve ser considerada mais robusta quando seu desempenho não estiver excessivamente concentrado em um único período.
-
-Telemetria sugerida:
+Registrar:
 
 ```text
 P13+ por período
 P12+ por período
+Top1 accuracy por período
+Disagreement win rate por período
 média por período
-desvio entre períodos
 pior janela
 melhor janela
 ```
 
 ---
 
-# Runs e fragmentação
+# Telemetria desejada
 
-Métricas candidatas:
+Além da saída atual, registrar futuramente por jogo:
 
 ```text
-longest_top1_run
-number_of_top1_runs
-number_of_transitions
-fragmentation_score
+p_top1
+p_top2
+p_top3
+margin_top1_top2
+entropy
+top1_residual
+top1_lift
+top1_reliability
+conditional_top1_rate
+p_top1_meta
+baseline_rank
+historical_rank
+disagreement_flag
 ```
 
-Devem permanecer inicialmente como telemetria e só entrar no score final se houver evidência walk-forward.
-
----
-
-# Benchmarks
-
-Comparar novos métodos contra:
+E agregados:
 
 ```text
-gain
-uncertainty
-margin
-ratio
-exact
-hist_top1
-hist_top2
-hist_13plus
-similarity_knn
-hybrid_hist_prob
-exact_calibrated
-5 duplos aleatórios
-distribuição histórica global
-```
-
-O baseline aleatório deve usar múltiplas sementes e muitas repetições.
-
----
-
-# Telemetria e auditoria
-
-Informações atuais:
-
-```text
-p(1), p(X), p(2)
-Top1/Top2/Top3
-seco ou duplo
-palpite
-ganho marginal
-ranking de ganho
-constraints
-P(14)
-P(13)
-P(>=13)
-E[acertos]
-Brier
-Log Loss
-ECE
-```
-
-Evoluções desejadas:
-
-```text
-10–14 por estratégia
-P13+ empírico
-P12+ empírico
-intervalos de confiança
-empate estatístico
-distribuição T1/T2/T3
-historical_13plus_score
-position_score
-similarity_score
-probability_score
-hybrid_score
-fragmentation_score
+Top1 baseline accuracy
+Historical metric accuracy
+Disagreement cases
+p(top1) wins
+historical wins
+historical win rate
+P13+
+P12+
+IC95%
 estabilidade temporal
-impacto quantitativo das constraints
 ```
 
 ---
@@ -919,100 +780,23 @@ loteca-ML-9s-5d-0t/
 ├── models/
 │   └── model.json
 ├── output/
-│   └── predictions.csv
+│   ├── predictions.csv
+│   └── backtest.csv
 └── README.md
-```
-
----
-
-# Formato dos CSVs
-
-```text
-Delimitador: ;
-Separador decimal: ,
-```
-
-A leitura aceita:
-
-```text
-UTF-8
-CP1252
-Latin-1
-```
-
----
-
-# Formato dos palpites
-
-## Secos
-
-```text
-1
-X
-2
-```
-
-## Duplos
-
-```text
-1X
-12
-X2
-```
-
-## Triplos
-
-```text
-1X2
-```
-
-Na estratégia principal:
-
-```text
-Triplos = 0
 ```
 
 ---
 
 # Execução
 
-No PowerShell/Windows:
-
 ```powershell
 python main.py
 ```
 
-Com caminhos personalizados:
-
-```powershell
-python main.py --history data/concursos_anteriores.csv --next data/proximo_concurso.csv --model models/model.json --output output/predictions.csv
-```
-
----
-
-# Testes automatizados
-
-Executar:
+Testes:
 
 ```bash
 python -m unittest discover -v
-```
-
-Testes importantes:
-
-```text
-14 partidas por concurso
-9 secos
-5 duplos
-19 marcações
-0 triplos
-Flamengo sempre coberto
-empate do ranking 1 > 2 > X
-probabilidades normalizadas
-constraints preservam 9/5/0
-P(13) e P(14) validados
-walk-forward sem informação futura
-scores históricos usando apenas informação passada
 ```
 
 ---
@@ -1026,84 +810,87 @@ scores históricos usando apenas informação passada
 - [x] políticas `gain`, `uncertainty`, `margin` e `ratio`;
 - [x] `exact` com 2.002 combinações;
 - [x] `P(14)`, `P(13)`, `P(>=13)` e `E[acertos]`;
-- [x] ganho marginal dos duplos;
-- [x] Brier multiclasse, Log Loss, ECE e bins de calibração;
-- [x] matriz histórica posição × ranking;
-- [x] políticas `hist_top1` e `hist_top2` com suavização;
-- [x] seleção de políticas por walk-forward sem vazamento temporal.
+- [x] Brier, Log Loss, ECE e bins de calibração;
+- [x] matriz posição × ranking;
+- [x] `hist_top1` e `hist_top2`;
+- [x] walk-forward sem vazamento temporal;
+- [x] backtest 10–14;
+- [x] `P13+` e `P12+` empíricos;
+- [x] `output/backtest.csv`.
 
 ## Próximas prioridades — ordem prática
 
-1. [x] expandir backtest para 10–14;
-2. [x] calcular `P13+` e `P12+` empíricos;
-3. [x] salvar backtest concurso a concurso em `output/backtest.csv`;
-4. [ ] implementar bootstrap e intervalos de confiança;
-5. [ ] registrar empate estatístico entre políticas quando apropriado;
-6. [ ] criar `historical_13plus_score` / `hist_13plus`;
-7. [ ] implementar `distribution_backtest` Top1/Top2/Top3;
-8. [ ] permitir duplos T1T3 e T2T3;
-9. [ ] avaliar secos Top2/Top3;
-10. [ ] implementar FullMarkingOptimizer;
-11. [ ] implementar distribuição/ordenação por similaridade KNN;
-12. [ ] implementar calibração aplicada e comparar `exact_raw` vs `exact_calibrated`;
-13. [ ] implementar `hybrid_hist_prob` / `hybrid_exact`;
-14. [ ] testar ensemble de estratégias;
-15. [ ] medir estabilidade temporal e janelas móveis;
-16. [ ] adicionar baseline aleatório;
-17. [ ] validar runs e fragmentação;
-18. [ ] substituir o desempate posicional arbitrário do `exact` por desempate neutro ou histórico validado;
-19. [ ] otimizar o limiar do Palmeiras.
+1. [ ] implementar **Disagreement Test** contra `p(Top1)`;
+2. [ ] implementar `top1_residual`;
+3. [ ] implementar `top1_lift`;
+4. [ ] implementar `top1_reliability` por bins;
+5. [ ] implementar `conditional_top1_rate`;
+6. [ ] implementar `p(top1_meta)`;
+7. [ ] comparar todas as métricas contra `p(Top1)` em walk-forward;
+8. [ ] bootstrap + IC95% das diferenças e do Disagreement Test;
+9. [ ] medir estabilidade temporal das métricas candidatas;
+10. [ ] registrar empate estatístico quando apropriado;
+11. [ ] testar `historical_13plus_score` como métrica complementar;
+12. [ ] implementar `distribution_backtest` Top1/Top2/Top3;
+13. [ ] permitir duplos T1T3 e T2T3;
+14. [ ] avaliar secos Top2/Top3;
+15. [ ] implementar FullMarkingOptimizer;
+16. [ ] implementar KNN por similaridade;
+17. [ ] implementar calibração aplicada;
+18. [ ] implementar `hybrid_hist_prob` / `hybrid_exact`;
+19. [ ] adicionar baseline aleatório;
+20. [ ] validar runs e fragmentação;
+21. [ ] remover/substituir desempate posicional arbitrário do `exact`;
+22. [ ] otimizar o limiar do Palmeiras.
 
 ---
 
 # Critério de sucesso
 
-O projeto **não busca apenas acertar o resultado mais provável de cada partida**.
+O projeto não busca simplesmente encontrar uma heurística histórica diferente.
 
-A unidade de avaliação é o ticket completo de 19 marcações.
+A nova régua é:
 
-Prioridade conceitual:
+> **uma métrica histórica só é útil se acrescentar informação que `p(Top1)` ainda não contém.**
+
+Critérios mínimos:
 
 ```text
-14 acertos
-   ↓
-13 acertos
-   ↓
-12 acertos / estabilidade
-   ↓
-média de acertos
+superar p(Top1) fora da amostra
+↓
+vencer nos casos de discordância
+↓
+melhorar P13+ / P12+
+↓
+manter estabilidade temporal
+↓
+resistir a bootstrap / intervalos de confiança
 ```
 
-Toda heurística deve demonstrar ganho histórico e, preferencialmente, fora da amostra.
-
-Quando duas estratégias forem estatisticamente indistinguíveis, o sistema deve evitar declarar superioridade sem evidência suficiente.
+A unidade final de avaliação continua sendo o ticket completo de 19 marcações.
 
 ---
 
 # Princípio geral
 
 ```text
-Probabilidades
+p(Top1) baseline
       +
-Histórico
+Histórico incremental
+      +
+Teste de discordância
       +
 Validação walk-forward
       +
 Incerteza estatística
       +
-Ordenações históricas
-      +
 Distribuição Top1/Top2/Top3
       +
 Constraints
-      +
-Calibração
       +
 Otimização
       ↓
 PALPITE FINAL
 ```
 
-A direção do projeto é tornar o sistema progressivamente menos dependente de regras intuitivas e mais orientado por evidência:
-
-> **maximizar, de forma auditável, estatisticamente defensável e validada fora da amostra, a capacidade da aposta de atingir 13 ou 14 pontos.**
+> **O histórico não deve competir com `p(Top1)` por intuição; deve demonstrar, fora da amostra, onde `p(Top1)` pode ser corrigido e se essa correção aumenta a capacidade do ticket de atingir 13 ou 14 pontos.**
