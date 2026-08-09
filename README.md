@@ -820,10 +820,10 @@ python -m unittest discover -v
 
 ## Próximas prioridades — ordem prática
 
-1. [ ] implementar **Disagreement Test** contra `p(Top1)`;
-2. [ ] implementar `top1_residual`;
-3. [ ] implementar `top1_lift`;
-4. [ ] implementar `top1_reliability` por bins;
+1. [x] implementar **Disagreement Test** contra `p(Top1)`;
+2. [x] implementar `top1_residual`;
+3. [x] implementar `top1_lift`;
+4. [x] implementar `top1_reliability` por bins;
 5. [ ] implementar `conditional_top1_rate`;
 6. [ ] implementar `p(top1_meta)`;
 7. [ ] comparar todas as métricas contra `p(Top1)` em walk-forward;
@@ -842,6 +842,11 @@ python -m unittest discover -v
 20. [ ] validar runs e fragmentação;
 21. [ ] remover/substituir desempate posicional arbitrário do `exact`;
 22. [ ] otimizar o limiar do Palmeiras.
+
+O teste walk-forward atual mantém essas métricas apenas como telemetria: as três
+ficaram abaixo de 50% de vitórias nos pares informativos de discordância e, por
+isso, **não alteram o ticket final** até demonstrarem ganho incremental. Os scores
+e o contexto de confiabilidade são exportados em `output/predictions.csv`.
 
 ---
 
