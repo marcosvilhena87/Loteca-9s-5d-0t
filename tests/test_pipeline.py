@@ -16,6 +16,9 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  nested_walk_forward_second_mark,
                                  oracle_decomposition, oracle_tickets,
                                  distribution_backtest, distribution_ticket,
+                                 generate_xyz_neighbors, generate_xyz_radius,
+                                 is_xyz_distribution_valid, xyz_distribution_id,
+                                 xyz_distribution_ticket,
                                  oracle_distribution_ticket,
                                  walk_forward_top1_meta)
 
@@ -303,6 +306,42 @@ class PipelineTests(unittest.TestCase):
                                     summary["mean"])
         games = contests[3]
         self.assertEqual(sum(map(len, oracle_distribution_ticket(games, 0))), 19)
+
+    def test_xyz_neighborhood_is_unique_and_one_transfer_away(self):
+        center = (9, 5, 5)
+        neighbors = generate_xyz_neighbors(*center)
+        self.assertEqual(len(neighbors), 6)
+        self.assertEqual(len(neighbors), len(set(neighbors)))
+        self.assertTrue(all(sum(point) == 19 and is_xyz_distribution_valid(*point)
+                            for point in neighbors))
+        self.assertTrue(all(sum(abs(a - b) for a, b in zip(center, point)) == 2
+                            for point in neighbors))
+        self.assertEqual(set(generate_xyz_radius(center, 1)), {center, *neighbors})
+        self.assertEqual(xyz_distribution_id(center), "XYZ_09_05_05")
+
+    def test_xyz_optimizer_preserves_distribution_and_hard_constraints(self):
+        games = [Match(1, i + 1, "A", "B", {"1": .5, "X": .3, "2": .2})
+                 for i in range(14)]
+        games[13] = Match(1, 14, "A", "FLAMENGO/RJ", {"1": .8, "X": .15, "2": .05})
+        distribution = (9, 5, 5)
+        ticket, notes = xyz_distribution_ticket(games, distribution)
+        rank_counts = [sum(game.ranking[rank] in pick for game, pick in zip(games, ticket))
+                       for rank in range(3)]
+        self.assertEqual(rank_counts, list(distribution))
+        self.assertEqual(sorted(map(len, ticket)), [1] * 9 + [2] * 5)
+        self.assertEqual(sum(map(len, ticket)), 19)
+        self.assertIn("2", ticket[13])
+        self.assertTrue(any("FLAMENGO" in note for note in notes))
+
+    def test_xyz_optimizer_rejects_invalid_or_constraint_infeasible_distribution(self):
+        games = [Match(1, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1})
+                 for i in range(14)]
+        with self.assertRaises(ValueError):
+            xyz_distribution_ticket(games, (15, 2, 2))
+        # Rank 3 is absent, but Flamengo's away win is rank 3 and mandatory.
+        games[0] = Match(1, 1, "A", "FLAMENGO/RJ", {"1": .6, "X": .3, "2": .1})
+        with self.assertRaisesRegex(ValueError, "Flamengo"):
+            xyz_distribution_ticket(games, (14, 5, 0))
 
 
 if __name__ == "__main__":

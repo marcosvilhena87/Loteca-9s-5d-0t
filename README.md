@@ -655,6 +655,17 @@ busca exata com poda
 
 Preferência inicial: **Programação Dinâmica**, porque o estado global pode rastrear contagens restantes de Top1/Top2/Top3, secos e duplos.
 
+Status: **implementado** em `scripts/train_model.py`. O otimizador avalia as seis
+marcações possíveis por jogo, maximiza a probabilidade total coberta sem acessar
+resultados reais e incorpora a vitória do Flamengo durante a transição dos
+estados. Assim, uma composição incompatível com a Hard Constraint é rejeitada
+explicitamente, sem ajuste silencioso das contagens XYZ.
+
+Também estão disponíveis o validador estrutural, o identificador canônico e os
+geradores determinísticos de vizinhos e de raios. O espaço XYZ permanece
+experimental e não altera o palpite final até obter evidência nested
+walk-forward robusta.
+
 Estado conceitual:
 
 ```text

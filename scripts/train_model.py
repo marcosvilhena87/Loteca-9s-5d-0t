@@ -706,6 +706,111 @@ def _ticket_hits(games: list[Match], ticket: list[set[str]]) -> int:
     return sum(game.actual in pick for game, pick in zip(games, ticket))
 
 
+def is_xyz_distribution_valid(x: int, y: int, z: int) -> bool:
+    """Return whether rank totals can form a 9-dry/5-double ticket.
+
+    There are 19 marks and a rank can occur at most once in each of the 14
+    matches.  Those conditions are also sufficient: the five extra marks can
+    always be paired with a different rank when no rank exceeds 14.
+    """
+    return all(isinstance(value, int) and 0 <= value <= 14 for value in (x, y, z)) \
+        and x + y + z == 19
+
+
+def generate_xyz_neighbors(x: int, y: int, z: int) -> list[tuple[int, int, int]]:
+    """Generate every valid distribution one unit-transfer away."""
+    if not is_xyz_distribution_valid(x, y, z):
+        raise ValueError("a distribuição XYZ de origem é inválida")
+    values = (x, y, z)
+    neighbors = set()
+    for source in range(3):
+        for destination in range(3):
+            if source == destination:
+                continue
+            candidate = list(values)
+            candidate[source] -= 1
+            candidate[destination] += 1
+            if is_xyz_distribution_valid(*candidate):
+                neighbors.add(tuple(candidate))
+    return sorted(neighbors, reverse=True)
+
+
+def generate_xyz_radius(center: tuple[int, int, int] = (9, 5, 5),
+                        radius: int = 1) -> list[tuple[int, int, int]]:
+    """Return the unique feasible XYZ ball up to ``radius`` transfers."""
+    if not is_xyz_distribution_valid(*center) or not isinstance(radius, int) or radius < 0:
+        raise ValueError("centro ou raio XYZ inválido")
+    distances = {center: 0}
+    frontier = {center}
+    for distance in range(1, radius + 1):
+        next_frontier = {
+            neighbor for point in frontier for neighbor in generate_xyz_neighbors(*point)
+            if neighbor not in distances
+        }
+        for point in next_frontier:
+            distances[point] = distance
+        frontier = next_frontier
+    return sorted(distances, key=lambda point: (distances[point], tuple(-v for v in point)))
+
+
+def xyz_distribution_id(distribution: tuple[int, int, int]) -> str:
+    if not is_xyz_distribution_valid(*distribution):
+        raise ValueError("distribuição XYZ inválida")
+    return "XYZ_{:02d}_{:02d}_{:02d}".format(*distribution)
+
+
+def xyz_distribution_ticket(games: list[Match], distribution: tuple[int, int, int]
+                            ) -> tuple[list[set[str]], list[str]]:
+    """Place a fixed XYZ composition using pre-match probabilities only.
+
+    The dynamic program considers T1, T2, T3, T1T2, T1T3 and T2T3 per game,
+    maximizing total covered probability while tracking exact global counts.
+    Flamengo's victory is filtered into every candidate state, rather than
+    repaired afterwards (which could silently alter the requested XYZ totals).
+    """
+    if len(games) != 14 or not is_xyz_distribution_valid(*distribution):
+        raise ValueError("XYZ exige 14 jogos e uma distribuição viável")
+    actions = ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2))
+    target = distribution
+    # (T1, T2, T3, doubles) -> (score, action path)
+    states: dict[tuple[int, int, int, int], tuple[float, tuple[tuple[int, ...], ...]]] = {
+        (0, 0, 0, 0): (0.0, ())
+    }
+    for game in games:
+        forced_result = team_result(game, "FLAMENGO")
+        forced_rank = game.ranking.index(forced_result) if forced_result else None
+        updated = {}
+        for counts, (score, path) in states.items():
+            for action in actions:
+                if forced_rank is not None and forced_rank not in action:
+                    continue
+                next_counts = tuple(counts[rank] + int(rank in action) for rank in range(3))
+                key = (*next_counts, counts[3] + (len(action) == 2))
+                if any(key[rank] > target[rank] for rank in range(3)) or key[3] > 5:
+                    continue
+                coverage = sum(game.probabilities[game.ranking[rank]] for rank in action)
+                candidate = (score + coverage, path + (action,))
+                if key not in updated or candidate[0] > updated[key][0] or (
+                        candidate[0] == updated[key][0] and candidate[1] < updated[key][1]):
+                    updated[key] = candidate
+        states = updated
+    final = (*target, 5)
+    if final not in states:
+        raise ValueError("Hard Constraint do Flamengo torna a distribuição XYZ inviável")
+    ticket = [set(game.ranking[rank] for rank in action)
+              for game, action in zip(games, states[final][1])]
+    if sorted(map(len, ticket)) != [1] * 9 + [2] * 5 or sum(map(len, ticket)) != 19:
+        raise AssertionError("otimizador XYZ violou a estrutura 9/5/0")
+    notes = [f"XYZ solicitado/efetivo: {xyz_distribution_id(distribution)}"]
+    for game, pick in zip(games, ticket):
+        flamengo_win = team_result(game, "FLAMENGO")
+        if flamengo_win:
+            if flamengo_win not in pick:
+                raise AssertionError("otimizador XYZ não cobriu a vitória do Flamengo")
+            notes.append(f"FLAMENGO jogo {game.jogo}: vitória {flamengo_win} coberta")
+    return ticket, notes
+
+
 def _best_distribution_assignment(games: list[Match], top2_count: int,
                                   value) -> tuple[set[int], set[int]]:
     """Solve the rank-placement problem with a small deterministic DP."""
