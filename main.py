@@ -69,6 +69,15 @@ def main() -> None:
         print(f"[REGRET {name.upper()}] média {regret['mean_regret']:.4f} | "
               f"zero {regret['regret_0_rate']:.2%} | 2+ {regret['regret_2plus_rate']:.2%} | "
               f"máximo {regret['max_regret']}")
+    distributions = model["distribution_backtest"]
+    print("[DISTRIBUTION BACKTEST]")
+    for name, result in distributions["distributions"].items():
+        print(f"  {name}: P13+ {result['p13_plus_empirical']:.2%} | "
+              f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f}")
+    distribution_oracle = distributions["oracle_distribution"]
+    print(f"[ORACLE DISTRIBUTION] P13+ "
+          f"{distribution_oracle['p13_plus_empirical']:.2%} | "
+          f"P12+ {distribution_oracle['p12_plus_empirical']:.2%}")
     predict(args.next_contest, args.model, args.output)
 
 
