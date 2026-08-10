@@ -15,6 +15,8 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  walk_forward_reliability, walk_forward_second_mark,
                                  nested_walk_forward_second_mark,
                                  oracle_decomposition, oracle_tickets,
+                                 distribution_backtest, distribution_ticket,
+                                 oracle_distribution_ticket,
                                  walk_forward_top1_meta)
 
 
@@ -272,6 +274,35 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result["test_contests"], 1)
         self.assertEqual(set(result["regret"]), {"allocator", "selector", "full"})
         self.assertGreaterEqual(result["full"]["mean"], result["baseline"]["mean"])
+
+    def test_safe_distribution_preserves_hard_constraints_and_rank_counts(self):
+        games = [Match(1, i + 1, "A", "B", {"1": .5, "X": .3, "2": .2}, "X")
+                 for i in range(14)]
+        for top2_count in range(6):
+            ticket, _ = distribution_ticket(games, top2_count)
+            self.assertEqual(sorted(map(len, ticket)), [1] * 9 + [2] * 5)
+            self.assertEqual(sum(map(len, ticket)), 19)
+            self.assertTrue(all(game.ranking[0] in pick
+                                for game, pick in zip(games, ticket)))
+            extra_ranks = [game.ranking.index(next(iter(pick - {game.ranking[0]}))) + 1
+                           for game, pick in zip(games, ticket) if len(pick) == 2]
+            self.assertEqual(extra_ranks.count(2), top2_count)
+            self.assertEqual(extra_ranks.count(3), 5 - top2_count)
+
+    def test_distribution_backtest_is_leak_free_and_oracle_is_an_upper_bound(self):
+        contests = {contest: [Match(contest, i + 1, "A", "B",
+                    {"1": .5, "X": .3, "2": .2}, "2" if i < 5 else "1")
+                    for i in range(14)] for contest in range(1, 4)}
+        result = distribution_backtest(contests, minimum_history=2)
+        self.assertTrue(result["no_future_information"])
+        self.assertTrue(result["diagnostic_only"])
+        self.assertEqual(len(result["distributions"]), 6)
+        self.assertEqual(result["test_contests"], 1)
+        for name, summary in result["distributions"].items():
+            self.assertGreaterEqual(result["oracle_by_distribution"][name]["mean"],
+                                    summary["mean"])
+        games = contests[3]
+        self.assertEqual(sum(map(len, oracle_distribution_ticket(games, 0))), 19)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ DISAGREEMENT_STRENGTH_BINS = (0.02, 0.05, 0.10)
 RECOVERY_SELECTORS = ("top2_baseline", "recovery", "threshold_recovery")
 RECOVERY_THRESHOLDS = (0.00, 0.02, 0.05, 0.10, 0.15)
 GAP_23_BINS = (0.02, 0.05, 0.10)
+SAFE_DISTRIBUTIONS = tuple((14, top2, 5 - top2) for top2 in range(5, -1, -1))
 
 
 def _bin_index(value: float, boundaries: tuple[float, ...]) -> int:
@@ -705,6 +706,134 @@ def _ticket_hits(games: list[Match], ticket: list[set[str]]) -> int:
     return sum(game.actual in pick for game, pick in zip(games, ticket))
 
 
+def _best_distribution_assignment(games: list[Match], top2_count: int,
+                                  value) -> tuple[set[int], set[int]]:
+    """Solve the rank-placement problem with a small deterministic DP."""
+    if not 0 <= top2_count <= 5:
+        raise ValueError("a distribuição segura exige entre 0 e 5 marcas Top2")
+    forced: dict[int, int] = {}
+    for index, game in enumerate(games):
+        flamengo_win = team_result(game, "FLAMENGO")
+        if flamengo_win and flamengo_win != game.ranking[0]:
+            forced[index] = game.ranking.index(flamengo_win) + 1
+    # At an extreme distribution the Flamengo hard constraint can make the
+    # nominal composition mathematically infeasible. Use the nearest safe
+    # composition rather than ever removing Top1 or Flamengo's victory.
+    if 2 in forced.values() and top2_count == 0:
+        top2_count = 1
+    if 3 in forced.values() and top2_count == 5:
+        top2_count = 4
+    top3_count = 5 - top2_count
+    # State values contain score and the sequence of rank choices (0, 2, 3).
+    states: dict[tuple[int, int], tuple[float, tuple[int, ...]]] = {(0, 0): (0.0, ())}
+    for index, game in enumerate(games):
+        updated = {}
+        for (used_top2, used_top3), (score, choices) in states.items():
+            choices_for_game = (forced[index],) if index in forced else (0, 2, 3)
+            for rank in choices_for_game:
+                next_top2 = used_top2 + (rank == 2)
+                next_top3 = used_top3 + (rank == 3)
+                if next_top2 > top2_count or next_top3 > top3_count:
+                    continue
+                candidate = (score + (value(game, rank) if rank else 0.0),
+                             choices + (rank,))
+                key = (next_top2, next_top3)
+                # Lexicographically smaller choices keep earlier games on ties.
+                if key not in updated or candidate[0] > updated[key][0] or (
+                        candidate[0] == updated[key][0] and candidate[1] < updated[key][1]):
+                    updated[key] = candidate
+        states = updated
+    choices = states[(top2_count, top3_count)][1]
+    doubles = {index for index, rank in enumerate(choices) if rank}
+    top2 = {index for index, rank in enumerate(choices) if rank == 2}
+    return doubles, top2
+
+
+def distribution_ticket(games: list[Match], top2_count: int
+                        ) -> tuple[list[set[str]], list[str]]:
+    """Optimize the placement of one of the six safe rank distributions.
+
+    The score is the total covered pre-match probability.  Actual results are
+    deliberately inaccessible here, making this function safe for prediction
+    and backtesting.  All candidates pass through the constraint engine.
+    """
+    if len(games) != 14:
+        raise ValueError("a distribuição exige exatamente 14 jogos")
+    double_indexes, top2_indexes = _best_distribution_assignment(
+        games, top2_count,
+        lambda game, rank: game.probabilities[game.ranking[rank - 1]],
+    )
+    marks = {index: games[index].ranking[1 if index in top2_indexes else 2]
+             for index in double_indexes}
+    # A safe distribution must preserve Top1; the Palmeiras preference is soft
+    # and therefore disabled here when it would replace that mandatory mark.
+    ticket, notes = build_ticket(games, double_indexes, palmeiras_threshold=-1.0,
+                                 second_marks=marks)
+    if any(game.ranking[0] not in pick for game, pick in zip(games, ticket)):
+        raise AssertionError("distribuição segura removeu Top1")
+    return ticket, notes
+
+
+def oracle_distribution_ticket(games: list[Match], top2_count: int
+                               ) -> list[set[str]]:
+    """Return the best retrospective placement for one safe distribution."""
+    _ticket_hits(games, [{game.ranking[0]} for game in games])
+    double_indexes, top2_indexes = _best_distribution_assignment(
+        games, top2_count,
+        lambda game, rank: float(game.actual == game.ranking[rank - 1]),
+    )
+    marks = {index: games[index].ranking[1 if index in top2_indexes else 2]
+             for index in double_indexes}
+    ticket = build_ticket(games, double_indexes, palmeiras_threshold=-1.0,
+                          second_marks=marks)[0]
+    if any(game.ranking[0] not in pick for game, pick in zip(games, ticket)):
+        raise AssertionError("oracle de distribuição removeu Top1")
+    return ticket
+
+
+def distribution_backtest(contests: dict[int, list[Match]],
+                          minimum_history: int = MIN_WALK_FORWARD_CONTESTS
+                          ) -> dict[str, object]:
+    """Evaluate every safe distribution and its retrospective upper bound."""
+    contest_ids = sorted(contests)
+    if not 1 <= minimum_history < len(contest_ids):
+        raise ValueError("janela inicial inválida para backtest de distribuição")
+    hits = {f"14/{top2}/{top3}": [] for _, top2, top3 in SAFE_DISTRIBUTIONS}
+    oracle_hits = {key: [] for key in hits}
+    selected_oracle_hits: list[int] = []
+    selected_distribution_hits: list[int] = []
+    for position in range(minimum_history, len(contest_ids)):
+        assert contest_ids[position - 1] < contest_ids[position]
+        games = contests[contest_ids[position]]
+        contest_oracles = []
+        for _, top2, top3 in SAFE_DISTRIBUTIONS:
+            key = f"14/{top2}/{top3}"
+            ticket = distribution_ticket(games, top2)[0]
+            oracle_ticket = oracle_distribution_ticket(games, top2)
+            hits[key].append(_ticket_hits(games, ticket))
+            oracle_hits[key].append(_ticket_hits(games, oracle_ticket))
+            contest_oracles.append((oracle_hits[key][-1], top2, key))
+        oracle_hit, _, oracle_key = max(contest_oracles)
+        selected_oracle_hits.append(oracle_hit)
+        selected_distribution_hits.append(hits[oracle_key][-1])
+    return {
+        "test_contests": len(contest_ids) - minimum_history,
+        "no_future_information": True,
+        "distributions": {key: {**_hit_summary(values),
+                                  "median": float(statistics.median(values)),
+                                  "stddev": round(statistics.pstdev(values), 6)}
+                          for key, values in hits.items()},
+        "oracle_by_distribution": {key: _hit_summary(values)
+                                    for key, values in oracle_hits.items()},
+        "oracle_distribution": _hit_summary(selected_oracle_hits),
+        "distribution_regret": _regret_summary([
+            oracle - selected for oracle, selected in
+            zip(selected_oracle_hits, selected_distribution_hits)
+        ]),
+        "diagnostic_only": True,
+    }
+
+
 def oracle_tickets(games: list[Match], baseline: list[set[str]]) -> dict[str, list[set[str]]]:
     """Return retrospective allocator, selector and full-oracle tickets.
 
@@ -965,7 +1094,7 @@ def train(history_path: str, model_path: str,
     recovery_audit = walk_forward_second_mark(contests)
     nested_recovery = nested_walk_forward_second_mark(contests)
     model = {
-        "version": 12, "selected_policy": selected,
+        "version": 13, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -978,6 +1107,7 @@ def train(history_path: str, model_path: str,
         "probability_diagnostics": probability_diagnostics(contests),
         "allocator_diagnostics": allocator_diagnostics(contests),
         "oracle_decomposition": oracle_decomposition(contests, selected),
+        "distribution_backtest": distribution_backtest(contests),
         "top1_meta": top1_meta,
         "top1_reliability": {
             "walk_forward_disagreement": walk_forward_reliability(contests),
