@@ -59,6 +59,16 @@ def main() -> None:
           f"delta P13+ {nested['delta_p13_plus']:+.2%} | "
           f"delta P12+ {nested['delta_p12_plus']:+.2%} | "
           f"thresholds {nested['threshold_usage']}")
+    oracle = model["oracle_decomposition"]
+    print("[ORACLE DECOMPOSITION]")
+    for name in ("baseline", "allocator", "selector", "full"):
+        result = oracle[name]
+        print(f"  {name}: P13+ {result['p13_plus_empirical']:.2%} | "
+              f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f}")
+    for name, regret in oracle["regret"].items():
+        print(f"[REGRET {name.upper()}] média {regret['mean_regret']:.4f} | "
+              f"zero {regret['regret_0_rate']:.2%} | 2+ {regret['regret_2plus_rate']:.2%} | "
+              f"máximo {regret['max_regret']}")
     predict(args.next_contest, args.model, args.output)
 
 

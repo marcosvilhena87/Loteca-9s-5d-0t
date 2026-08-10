@@ -698,6 +698,110 @@ def allocated_ticket(games: list[Match], policy: str, selector: str,
     return build_ticket(games, indexes, second_marks=marks)
 
 
+def _ticket_hits(games: list[Match], ticket: list[set[str]]) -> int:
+    """Score a historical ticket; deliberately unusable without outcomes."""
+    if any(game.actual not in ("1", "X", "2") for game in games):
+        raise ValueError("oráculos exigem resultados reais")
+    return sum(game.actual in pick for game, pick in zip(games, ticket))
+
+
+def oracle_tickets(games: list[Match], baseline: list[set[str]]) -> dict[str, list[set[str]]]:
+    """Return retrospective allocator, selector and full-oracle tickets.
+
+    These tickets are diagnostics only: real outcomes are read explicitly and
+    are never exposed through ``ticket_for_policy`` or the prediction pipeline.
+    Every candidate still goes through ``build_ticket``, preserving 9/5/0 and
+    the Flamengo hard constraint.
+    """
+    if len(games) != 14 or sorted(map(len, baseline)) != [1] * 9 + [2] * 5:
+        raise ValueError("oráculos exigem um ticket baseline 9/5/0")
+    _ticket_hits(games, baseline)
+    baseline_indexes = {i for i, pick in enumerate(baseline) if len(pick) == 2}
+
+    def best_marks(indexes: set[int]) -> dict[int, str]:
+        marks: dict[int, str] = {}
+        for index in indexes:
+            game = games[index]
+            candidates = (game.ranking[1], game.ranking[2])
+            # Evaluate through the constraint engine because Flamengo coverage
+            # can replace a requested mark. Ties retain the safer Top2 baseline.
+            marks[index] = max(candidates, key=lambda mark: (
+                int(game.actual in constrained_pick(game, True, 0.03, mark)[0]),
+                -candidates.index(mark),
+            ))
+        return marks
+
+    def best_indexes(second_marks: dict[int, str] | None = None) -> set[int]:
+        gains = []
+        for index, game in enumerate(games):
+            single = constrained_pick(game, False, 0.03)[0]
+            mark = second_marks[index] if second_marks else None
+            double = constrained_pick(game, True, 0.03, mark)[0]
+            gains.append(int(game.actual in double) - int(game.actual in single))
+        return set(sorted(range(14), key=lambda index: (-gains[index], index))[:5])
+
+    allocator = build_ticket(games, best_indexes())[0]
+    selector = build_ticket(games, baseline_indexes,
+                            second_marks=best_marks(baseline_indexes))[0]
+    all_best_marks = best_marks(set(range(14)))
+    full_indexes = best_indexes(all_best_marks)
+    full = build_ticket(games, full_indexes,
+                        second_marks={i: all_best_marks[i] for i in full_indexes})[0]
+    return {"allocator": allocator, "selector": selector, "full": full}
+
+
+def _hit_summary(hits: list[int]) -> dict[str, int | float]:
+    return {
+        "14": sum(value == 14 for value in hits),
+        "13": sum(value == 13 for value in hits),
+        "12": sum(value == 12 for value in hits),
+        "p13_plus_empirical": round(sum(value >= 13 for value in hits) / len(hits), 8),
+        "p12_plus_empirical": round(sum(value >= 12 for value in hits) / len(hits), 8),
+        "mean": round(statistics.fmean(hits), 6),
+    }
+
+
+def _regret_summary(regrets: list[int]) -> dict[str, int | float]:
+    return {
+        "mean_regret": round(statistics.fmean(regrets), 6),
+        "median_regret": float(statistics.median(regrets)),
+        "regret_0_rate": round(sum(value == 0 for value in regrets) / len(regrets), 8),
+        "regret_1_rate": round(sum(value == 1 for value in regrets) / len(regrets), 8),
+        "regret_2plus_rate": round(sum(value >= 2 for value in regrets) / len(regrets), 8),
+        "max_regret": max(regrets),
+    }
+
+
+def oracle_decomposition(contests: dict[int, list[Match]], policy: str,
+                         minimum_history: int = MIN_WALK_FORWARD_CONTESTS
+                         ) -> dict[str, object]:
+    """Measure structural headroom on the same out-of-sample contests."""
+    contest_ids = sorted(contests)
+    ordered = [contests[key] for key in contest_ids]
+    if not 1 <= minimum_history < len(ordered):
+        raise ValueError("janela inicial inválida para decomposição oracle")
+    hits = {name: [] for name in ("baseline", "allocator", "selector", "full")}
+    for index in range(minimum_history, len(ordered)):
+        assert contest_ids[index - 1] < contest_ids[index]
+        rates = position_rank_hit_rates(ordered[:index])
+        baseline, _ = ticket_for_policy(ordered[index], policy, rates)
+        oracle = oracle_tickets(ordered[index], baseline)
+        hits["baseline"].append(_ticket_hits(ordered[index], baseline))
+        for name, ticket in oracle.items():
+            hits[name].append(_ticket_hits(ordered[index], ticket))
+    return {
+        "test_contests": len(hits["baseline"]),
+        "diagnostic_only": True,
+        "baseline_policy": policy,
+        **{name: _hit_summary(values) for name, values in hits.items()},
+        "regret": {
+            name: _regret_summary([oracle - baseline for oracle, baseline in
+                                   zip(hits[name], hits["baseline"])])
+            for name in ("allocator", "selector", "full")
+        },
+    }
+
+
 def position_rank_hit_rates(contests: list[list[Match]]) -> list[list[float]]:
     """Estimate position/rank rates using only the supplied past contests.
 
@@ -861,7 +965,7 @@ def train(history_path: str, model_path: str,
     recovery_audit = walk_forward_second_mark(contests)
     nested_recovery = nested_walk_forward_second_mark(contests)
     model = {
-        "version": 11, "selected_policy": selected,
+        "version": 12, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -873,6 +977,7 @@ def train(history_path: str, model_path: str,
         "rank_hit_rates": [round(count / sum(rank_hits), 6) for count in rank_hits],
         "probability_diagnostics": probability_diagnostics(contests),
         "allocator_diagnostics": allocator_diagnostics(contests),
+        "oracle_decomposition": oracle_decomposition(contests, selected),
         "top1_meta": top1_meta,
         "top1_reliability": {
             "walk_forward_disagreement": walk_forward_reliability(contests),

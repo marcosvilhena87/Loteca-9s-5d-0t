@@ -14,6 +14,7 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  top1_reliability_model, train, walk_forward_backtest,
                                  walk_forward_reliability, walk_forward_second_mark,
                                  nested_walk_forward_second_mark,
+                                 oracle_decomposition, oracle_tickets,
                                  walk_forward_top1_meta)
 
 
@@ -248,6 +249,29 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(audit["selections"][1]["past_observations"], 28)
         self.assertEqual(sum(audit["threshold_usage"].values()), 2)
         self.assertGreaterEqual(audit["nested"]["mean"], audit["baseline"]["mean"])
+
+    def test_oracles_measure_headroom_without_breaking_hard_constraints(self):
+        games = [Match(3, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1},
+                       "X" if i < 6 else "1") for i in range(14)]
+        games[13] = Match(3, 14, "A", "FLAMENGO/RJ", {"1": .8, "X": .15, "2": .05}, "2")
+        baseline, _ = heuristic_ticket(games, "uncertainty")
+        baseline_hits = sum(game.actual in pick for game, pick in zip(games, baseline))
+        for ticket in oracle_tickets(games, baseline).values():
+            self.assertEqual(sorted(map(len, ticket)), [1] * 9 + [2] * 5)
+            self.assertEqual(sum(map(len, ticket)), 19)
+            self.assertIn("2", ticket[13])
+            self.assertGreaterEqual(sum(game.actual in pick for game, pick in zip(games, ticket)),
+                                    baseline_hits)
+
+    def test_oracle_decomposition_reports_component_regret(self):
+        contests = {contest: [Match(contest, i + 1, "A", "B",
+                    {"1": .6, "X": .3, "2": .1}, "X" if i < 6 else "1")
+                    for i in range(14)] for contest in range(1, 4)}
+        result = oracle_decomposition(contests, "uncertainty", minimum_history=2)
+        self.assertTrue(result["diagnostic_only"])
+        self.assertEqual(result["test_contests"], 1)
+        self.assertEqual(set(result["regret"]), {"allocator", "selector", "full"})
+        self.assertGreaterEqual(result["full"]["mean"], result["baseline"]["mean"])
 
 
 if __name__ == "__main__":

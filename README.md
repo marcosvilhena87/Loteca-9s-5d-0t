@@ -1106,10 +1106,10 @@ python -m unittest discover -v
 
 ## Fase 1 — diagnóstico estrutural
 
-1. [ ] implementar `OracleAllocator`;
-2. [ ] implementar `OracleSecondMark`;
-3. [ ] implementar `OracleFull`;
-4. [ ] implementar regret por allocator/selector/full;
+1. [x] implementar `OracleAllocator`;
+2. [x] implementar `OracleSecondMark`;
+3. [x] implementar `OracleFull`;
+4. [x] implementar regret por allocator/selector/full;
 5. [ ] adicionar pairwise específico de P13+/P12+;
 6. [ ] adicionar distribuição dos deltas de acertos.
 
