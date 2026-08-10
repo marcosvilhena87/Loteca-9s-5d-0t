@@ -1,10 +1,26 @@
 {
-  "version": 10,
+  "version": 11,
   "selected_policy": "uncertainty",
   "selected_second_mark": "top2_baseline",
   "contests_evaluated": 445,
   "policy_backtest": {
     "gain": {
+      "14": 0,
+      "13": 6,
+      "12": 17,
+      "11": 48,
+      "10": 73,
+      "<=9": 271,
+      "hits": 3628,
+      "mean": 8.742169,
+      "median": 9.0,
+      "stddev": 1.789805,
+      "min": 3,
+      "max": 13,
+      "p13_plus_empirical": 0.01445783,
+      "p12_plus_empirical": 0.05542169
+    },
+    "top2_probability": {
       "14": 0,
       "13": 6,
       "12": 17,
@@ -347,6 +363,294 @@
         0.217978
       ]
     ]
+  },
+  "allocator_diagnostics": {
+    "test_contests": 415,
+    "no_future_information": true,
+    "overlap_mean_of_5": {
+      "gain__top2_probability": 5.0,
+      "gain__uncertainty": 4.298795,
+      "gain__margin": 4.481928,
+      "gain__ratio": 4.53494,
+      "gain__hist_top1": 1.768675,
+      "gain__hist_top2": 1.708434,
+      "gain__exact": 4.559036,
+      "top2_probability__uncertainty": 4.298795,
+      "top2_probability__margin": 4.481928,
+      "top2_probability__ratio": 4.53494,
+      "top2_probability__hist_top1": 1.768675,
+      "top2_probability__hist_top2": 1.708434,
+      "top2_probability__exact": 4.559036,
+      "uncertainty__margin": 4.792771,
+      "uncertainty__ratio": 4.727711,
+      "uncertainty__hist_top1": 1.816867,
+      "uncertainty__hist_top2": 1.766265,
+      "uncertainty__exact": 4.657831,
+      "margin__ratio": 4.925301,
+      "margin__hist_top1": 1.80241,
+      "margin__hist_top2": 1.746988,
+      "margin__exact": 4.845783,
+      "ratio__hist_top1": 1.787952,
+      "ratio__hist_top2": 1.742169,
+      "ratio__exact": 4.918072,
+      "hist_top1__hist_top2": 3.672289,
+      "hist_top1__exact": 1.8,
+      "hist_top2__exact": 1.749398
+    },
+    "pairwise": {
+      "gain__top2_probability": {
+        "wins": 0,
+        "ties": 415,
+        "losses": 0,
+        "mean_delta_hits": 0.0,
+        "p13_plus_wins": 0,
+        "p13_plus_ties": 415,
+        "p13_plus_losses": 0
+      },
+      "gain__uncertainty": {
+        "wins": 62,
+        "ties": 300,
+        "losses": 53,
+        "mean_delta_hits": 0.02168675,
+        "p13_plus_wins": 2,
+        "p13_plus_ties": 411,
+        "p13_plus_losses": 2
+      },
+      "gain__margin": {
+        "wins": 45,
+        "ties": 331,
+        "losses": 39,
+        "mean_delta_hits": 0.01686747,
+        "p13_plus_wins": 2,
+        "p13_plus_ties": 412,
+        "p13_plus_losses": 1
+      },
+      "gain__ratio": {
+        "wins": 43,
+        "ties": 340,
+        "losses": 32,
+        "mean_delta_hits": 0.02891566,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 413,
+        "p13_plus_losses": 1
+      },
+      "gain__hist_top1": {
+        "wins": 152,
+        "ties": 157,
+        "losses": 106,
+        "mean_delta_hits": 0.17831325,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "gain__hist_top2": {
+        "wins": 146,
+        "ties": 156,
+        "losses": 113,
+        "mean_delta_hits": 0.14457831,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "gain__exact": {
+        "wins": 42,
+        "ties": 345,
+        "losses": 28,
+        "mean_delta_hits": 0.03373494,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 413,
+        "p13_plus_losses": 1
+      },
+      "top2_probability__uncertainty": {
+        "wins": 62,
+        "ties": 300,
+        "losses": 53,
+        "mean_delta_hits": 0.02168675,
+        "p13_plus_wins": 2,
+        "p13_plus_ties": 411,
+        "p13_plus_losses": 2
+      },
+      "top2_probability__margin": {
+        "wins": 45,
+        "ties": 331,
+        "losses": 39,
+        "mean_delta_hits": 0.01686747,
+        "p13_plus_wins": 2,
+        "p13_plus_ties": 412,
+        "p13_plus_losses": 1
+      },
+      "top2_probability__ratio": {
+        "wins": 43,
+        "ties": 340,
+        "losses": 32,
+        "mean_delta_hits": 0.02891566,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 413,
+        "p13_plus_losses": 1
+      },
+      "top2_probability__hist_top1": {
+        "wins": 152,
+        "ties": 157,
+        "losses": 106,
+        "mean_delta_hits": 0.17831325,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "top2_probability__hist_top2": {
+        "wins": 146,
+        "ties": 156,
+        "losses": 113,
+        "mean_delta_hits": 0.14457831,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "top2_probability__exact": {
+        "wins": 42,
+        "ties": 345,
+        "losses": 28,
+        "mean_delta_hits": 0.03373494,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 413,
+        "p13_plus_losses": 1
+      },
+      "uncertainty__margin": {
+        "wins": 20,
+        "ties": 373,
+        "losses": 22,
+        "mean_delta_hits": -0.00481928,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 414,
+        "p13_plus_losses": 0
+      },
+      "uncertainty__ratio": {
+        "wins": 27,
+        "ties": 364,
+        "losses": 24,
+        "mean_delta_hits": 0.00722892,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 413,
+        "p13_plus_losses": 1
+      },
+      "uncertainty__hist_top1": {
+        "wins": 155,
+        "ties": 150,
+        "losses": 110,
+        "mean_delta_hits": 0.15662651,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "uncertainty__hist_top2": {
+        "wins": 144,
+        "ties": 148,
+        "losses": 123,
+        "mean_delta_hits": 0.12289157,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "uncertainty__exact": {
+        "wins": 34,
+        "ties": 352,
+        "losses": 29,
+        "mean_delta_hits": 0.01204819,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 413,
+        "p13_plus_losses": 1
+      },
+      "margin__ratio": {
+        "wins": 7,
+        "ties": 406,
+        "losses": 2,
+        "mean_delta_hits": 0.01204819,
+        "p13_plus_wins": 0,
+        "p13_plus_ties": 414,
+        "p13_plus_losses": 1
+      },
+      "margin__hist_top1": {
+        "wins": 149,
+        "ties": 159,
+        "losses": 107,
+        "mean_delta_hits": 0.16144578,
+        "p13_plus_wins": 5,
+        "p13_plus_ties": 405,
+        "p13_plus_losses": 5
+      },
+      "margin__hist_top2": {
+        "wins": 145,
+        "ties": 150,
+        "losses": 120,
+        "mean_delta_hits": 0.12771084,
+        "p13_plus_wins": 5,
+        "p13_plus_ties": 405,
+        "p13_plus_losses": 5
+      },
+      "margin__exact": {
+        "wins": 16,
+        "ties": 390,
+        "losses": 9,
+        "mean_delta_hits": 0.01686747,
+        "p13_plus_wins": 0,
+        "p13_plus_ties": 414,
+        "p13_plus_losses": 1
+      },
+      "ratio__hist_top1": {
+        "wins": 147,
+        "ties": 157,
+        "losses": 111,
+        "mean_delta_hits": 0.14939759,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "ratio__hist_top2": {
+        "wins": 144,
+        "ties": 147,
+        "losses": 124,
+        "mean_delta_hits": 0.11566265,
+        "p13_plus_wins": 6,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 5
+      },
+      "ratio__exact": {
+        "wins": 9,
+        "ties": 399,
+        "losses": 7,
+        "mean_delta_hits": 0.00481928,
+        "p13_plus_wins": 0,
+        "p13_plus_ties": 415,
+        "p13_plus_losses": 0
+      },
+      "hist_top1__hist_top2": {
+        "wins": 80,
+        "ties": 247,
+        "losses": 88,
+        "mean_delta_hits": -0.03373494,
+        "p13_plus_wins": 1,
+        "p13_plus_ties": 413,
+        "p13_plus_losses": 1
+      },
+      "hist_top1__exact": {
+        "wins": 109,
+        "ties": 159,
+        "losses": 147,
+        "mean_delta_hits": -0.14457831,
+        "p13_plus_wins": 5,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 6
+      },
+      "hist_top2__exact": {
+        "wins": 126,
+        "ties": 142,
+        "losses": 147,
+        "mean_delta_hits": -0.11084337,
+        "p13_plus_wins": 5,
+        "p13_plus_ties": 404,
+        "p13_plus_losses": 6
+      }
+    }
   },
   "top1_meta": {
     "feature_names": [

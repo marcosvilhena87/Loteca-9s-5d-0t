@@ -1026,9 +1026,9 @@ python -m unittest discover -v
 
 ## Fase 1 — diagnóstico estrutural
 
-1. [ ] implementar `top2_probability` como baseline explícito;
-2. [ ] medir overlap entre allocators;
-3. [ ] implementar comparação pareada concurso a concurso;
+1. [x] implementar `top2_probability` como baseline explícito;
+2. [x] medir overlap entre allocators;
+3. [x] implementar comparação pareada concurso a concurso;
 4. [ ] implementar `OracleAllocator`;
 5. [ ] implementar `OracleSecondMark`;
 6. [ ] implementar `OracleFull`;
