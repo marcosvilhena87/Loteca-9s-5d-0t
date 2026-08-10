@@ -1,6 +1,6 @@
 # Loteca ML — Estratégia 9 Secos / 5 Duplos / 0 Triplos
 
-Projeto de Machine Learning para gerar **um único palpite final da Loteca**, com foco em maximizar a chance de atingir **13 ou 14 acertos**, respeitando sempre:
+Projeto de Machine Learning para gerar **um único palpite final da Loteca**, com foco em maximizar a probabilidade de atingir **13 ou 14 acertos**, respeitando sempre:
 
 - **9 secos**;
 - **5 duplos**;
@@ -62,24 +62,25 @@ Top3: 21.6854%
 
 # Função objetivo
 
-A hierarquia de decisão do projeto passa a ser explicitamente orientada à cauda superior:
+A hierarquia de decisão é orientada à cauda superior:
 
 ```text
 1. maior P13+
-2. maior número de concursos com 13
-3. maior P12+
-4. maior número de concursos com 12
-5. maior média de acertos
-6. menor instabilidade/variância
+2. maior número de concursos com 14
+3. maior número de concursos com 13
+4. maior P12+
+5. maior número de concursos com 12
+6. maior média de acertos
+7. menor instabilidade/variância
 ```
 
-Métricas como accuracy, média de acertos, win rate da segunda marca e Brier Score continuam importantes, mas funcionam principalmente como **diagnóstico**. Uma alteração só deve ser promovida quando melhorar o ticket fora da amostra.
+Accuracy, média, win rate da segunda marca, Brier Score, Log Loss e ECE são métricas importantes, mas funcionam principalmente como **diagnóstico**. Uma alteração só deve ser promovida quando melhorar o ticket fora da amostra.
 
 ---
 
 # Princípio central — preservar o Top1
 
-O `p(Top1)` continua sendo o baseline individual mais forte do projeto.
+O `p(Top1)` continua sendo o baseline individual mais forte.
 
 Uma métrica histórica só pode substituir ou reordenar o Top1 se demonstrar informação incremental fora da amostra.
 
@@ -88,7 +89,7 @@ Critérios mínimos:
 ```text
 1. superar p(Top1) em walk-forward;
 2. vencer quando sua ordenação discorda de p(Top1);
-3. melhorar P13+ e/ou P12+ do ticket;
+3. melhorar P13+ do ticket;
 4. apresentar estabilidade temporal;
 5. não usar informação futura.
 ```
@@ -125,49 +126,9 @@ Conclusão:
 
 ---
 
-# Arquitetura — DoubleAllocator × SecondMarkSelector
+# Arquitetura atual
 
-O problema é dividido em duas decisões independentes.
-
-## DoubleAllocator
-
-Escolhe **quais cinco jogos recebem duplo**.
-
-Políticas atuais:
-
-```text
-gain
-uncertainty
-margin
-ratio
-hist_top1
-hist_top2
-exact
-```
-
-Política adicional prioritária:
-
-```text
-top2_probability
-```
-
-Ela deve selecionar diretamente os cinco maiores `p(Top2)` e funcionar como baseline explícito para verificar o quanto as demais políticas realmente acrescentam.
-
-## SecondMarkSelector
-
-Escolhe **qual resultado acompanha o Top1 em cada duplo**.
-
-Candidatos:
-
-```text
-top2_baseline
-recovery
-threshold_recovery
-second_mark_meta
-double_value
-```
-
-Fluxo:
+A arquitetura baseline divide o problema em duas decisões:
 
 ```text
 14 jogos
@@ -185,15 +146,48 @@ Hard Constraints
 ticket final
 ```
 
+## DoubleAllocator
+
+Escolhe **quais cinco jogos recebem duplo**.
+
+Políticas atuais:
+
+```text
+gain
+top2_probability
+uncertainty
+margin
+ratio
+hist_top1
+hist_top2
+exact
+```
+
+## SecondMarkSelector
+
+Escolhe **qual resultado acompanha Top1 em cada duplo**.
+
+Candidatos:
+
+```text
+top2_baseline
+recovery
+threshold_recovery
+second_mark_meta
+double_value
+```
+
 ---
 
 # Estratégias atuais de alocação dos duplos
 
-## gain
+## gain / top2_probability
 
 ```text
 score = p(Top2)
 ```
+
+`gain` e `top2_probability` são equivalentes no baseline atual. `top2_probability` existe como nome explícito da regra; futuramente `gain` pode receber uma definição de valor marginal diferente.
 
 ## uncertainty
 
@@ -225,23 +219,14 @@ Avalia:
 C(14,5) = 2.002
 ```
 
-alocações possíveis dos cinco duplos e maximiza principalmente `P(>=13)` sob as probabilidades disponíveis.
+alocações dos cinco duplos e maximiza principalmente `P(>=13)` segundo as probabilidades disponíveis.
 
-No baseline atual:
-
-```text
-Seco  = Top1
-Duplo = Top1 + Top2
-```
-
-## top2_probability — implementação prioritária
+Importante distinguir:
 
 ```text
-score = p(Top2)
-selecionar os 5 maiores scores
+exact_probability = otimização ex-ante usando probabilidades
+oracle_allocator  = diagnóstico ex-post usando resultados reais
 ```
-
-Mesmo sendo matematicamente equivalente ao `gain` no baseline `T1T2`, deve existir como baseline nominal para facilitar comparações, testes de equivalência e futuras alterações na definição de ganho.
 
 ---
 
@@ -250,7 +235,7 @@ Mesmo sendo matematicamente equivalente ao `gain` no baseline `T1T2`, deve exist
 415 concursos fora da janela inicial:
 
 ```text
-gain
+gain / top2_probability
 14: 0 | 13: 6 | 12: 17 | P13+: 1.445783% | P12+: 5.542169%
 
 uncertainty
@@ -275,36 +260,43 @@ exact
 Critério atual:
 
 ```text
+P13+
+↓
 14
 ↓
-13+
+13
 ↓
-12+
+P12+
 ↓
 estabilidade
 ↓
 média
 ```
 
-Por esse critério, `uncertainty` permanece como política selecionada atualmente.
+`uncertainty` permanece como política selecionada por desempate operacional. `gain`, `top2_probability`, `uncertainty`, `ratio` e `exact` ainda não apresentam separação robusta em P13+.
 
-Importante: `gain`, `uncertainty`, `ratio` e `exact` estão empatados em P13+ no histórico atual. Portanto, a superioridade de `uncertainty` ainda deve ser tratada como **desempate operacional**, não como evidência forte de dominância.
+Telemetria recente:
+
+```text
+[ALLOCATOR OVERLAP]
+uncertainty x gain:             4.299 / 5
+uncertainty x top2_probability: 4.299 / 5
+uncertainty x ratio:            4.728 / 5
+uncertainty x exact:            4.658 / 5
+
+[PAIRWISE] gain vs uncertainty
+62 vitórias | 300 empates | 53 derrotas | delta médio +0.0217
+```
+
+O maior número de acertos totais do `gain` não implica superioridade em P13+.
 
 ---
 
 # Error Recovery Score
 
-O recovery é estimado usando somente concursos anteriores e somente jogos nos quais Top1 realmente falhou.
-
 ```text
 recovery_top2 = P(Top2_hit | Top1_miss, contexto)
 recovery_top3 = P(Top3_hit | Top1_miss, contexto)
-```
-
-Como Top2 e Top3 são os únicos resultados restantes quando Top1 erra:
-
-```text
-recovery_top2 + recovery_top3 ≈ 1
 ```
 
 Baseline:
@@ -314,17 +306,10 @@ Seco  = Top1
 Duplo = Top1 + Top2
 ```
 
-Comparação experimental:
+Resultado atual:
 
 ```text
-T1T2
-vs
-T1T3
-```
-
-## Second-Mark Disagreement
-
-```text
+[SECOND-MARK DISAGREEMENT]
 739 casos
 Top2 baseline wins: 368
 recovery wins:      371
@@ -332,49 +317,22 @@ recovery win rate:  50.20%
 seletor final:      top2_baseline
 ```
 
-Isso representa apenas **+3 decisões líquidas** para recovery e deve ser tratado como empate prático.
-
----
-
-# Threshold Recovery
+Thresholds:
 
 ```text
-recovery_advantage = recovery_top3 - recovery_top2
+threshold   trocas   Top2   recovery   win rate   IC95%
+0.00          739     368      371      50.20%    46.82%–53.86%
+0.02          669     338      331      49.48%    45.74%–53.36%
+0.05          549     262      287      52.28%    48.45%–56.47%
+0.10          470     222      248      52.77%    48.30%–57.23%
+0.15          342     161      181      52.92%    47.66%–58.19%
 ```
 
-Regra:
+Todos os IC95% ainda incluem 50%.
+
+## Nested Recovery
 
 ```text
-T1T2 por padrão
-T1T3 somente se recovery_advantage >= threshold
-```
-
-Resultados atuais:
-
-```text
-threshold   trocas   Top2   recovery   win rate   IC95%              ganho líquido
-0.00          739     368      371      50.20%    46.82%–53.86%          +3
-0.02          669     338      331      49.48%    45.74%–53.36%          -7
-0.05          549     262      287      52.28%    48.45%–56.47%         +25
-0.10          470     222      248      52.77%    48.30%–57.23%         +26
-0.15          342     161      181      52.92%    47.66%–58.19%         +20
-```
-
-Todos os IC95% ainda incluem 50%. Portanto, nenhum threshold está promovido ao ticket final.
-
-```text
-SecondMarkSelector = top2_baseline
-```
-
----
-
-# Nested Walk-Forward para threshold
-
-Cada threshold é escolhido usando somente o passado e congelado antes de avaliar o concurso seguinte.
-
-```text
-415 concursos de teste
-
                          Top2 baseline    Nested recovery
 14                              0                 0
 13                              6                 5
@@ -387,41 +345,17 @@ delta P13+: -0.2410 p.p.
 delta P12+: +2.6506 p.p.
 ```
 
-Thresholds selecionados usando somente o passado:
+Conclusão:
 
-```text
-0.05: 373 concursos
-0.10:  42 concursos
-0.15:   0 concursos
-```
-
-O nested melhora P12+ e média, mas reduz P13+. Portanto, **não foi promovido**.
-
-Esse resultado reforça um princípio do projeto:
-
-> uma regra pode melhorar decisões individuais ou a média de acertos e ainda piorar a cauda de 13+.
+> O recovery melhora P12+ e média, mas reduz P13+. Portanto, **não é promovido** e `top2_baseline` permanece ativo.
 
 ---
 
-# Nova prioridade — Oracle Decomposition
+# Prioridade 1 — Oracle Decomposition
 
-Antes de aumentar a complexidade do ML, medir o **teto de melhoria disponível** em cada parte da arquitetura.
+Antes de aumentar a complexidade do ML, medir o teto de melhoria disponível.
 
-Como existem apenas:
-
-```text
-C(14,5) = 2.002
-```
-
-combinações de cinco duplos por concurso, é viável testar exaustivamente todas as escolhas no backtest.
-
-Para 415 concursos:
-
-```text
-415 × 2.002 = 830.830 combinações
-```
-
-## Oracle A — OracleAllocator
+## OracleAllocator
 
 Mantém:
 
@@ -430,23 +364,15 @@ Seco  = Top1
 Duplo = Top1 + Top2
 ```
 
-mas usa o resultado real apenas para fins de diagnóstico retrospectivo e encontra quais cinco jogos deveriam ter recebido duplo.
+mas encontra retrospectivamente os cinco jogos que deveriam ter recebido duplo.
 
-Objetivo:
+## OracleSecondMark
 
-> medir o teto máximo disponível para melhorar o `DoubleAllocator`.
+Mantém os cinco duplos da política real e escolhe retrospectivamente Top2 ou Top3 em cada um.
 
-## Oracle B — OracleSecondMark
+## OracleFull
 
-Mantém os cinco duplos escolhidos pela política real, porém seleciona retrospectivamente `Top2` ou `Top3` em cada duplo.
-
-Objetivo:
-
-> medir o teto máximo disponível para melhorar o `SecondMarkSelector`.
-
-## Oracle C — OracleFull
-
-Pode escolher retrospectivamente:
+Escolhe retrospectivamente:
 
 ```text
 quais 5 jogos recebem duplo
@@ -454,20 +380,12 @@ quais 5 jogos recebem duplo
 Top2 ou Top3 em cada duplo
 ```
 
-Objetivo:
+Os oráculos nunca participam da previsão final. Eles medem apenas o **teto estrutural** de melhoria.
 
-> medir o teto conjunto da arquitetura atual `Top1 + 5 duplos`.
-
-## Telemetria Oracle
+Telemetria:
 
 ```text
 [ORACLE DECOMPOSITION]
-
-baseline_mean:
-allocator_oracle_mean:
-selector_oracle_mean:
-full_oracle_mean:
-
 baseline_P13+:
 allocator_oracle_P13+:
 selector_oracle_P13+:
@@ -479,16 +397,32 @@ selector_oracle_P12+:
 full_oracle_P12+:
 ```
 
-Os oráculos **jamais** participam da previsão final. Eles são apenas instrumentos diagnósticos para descobrir onde existe capacidade de melhoria.
-
 ---
 
-# Regret do DoubleAllocator
+# Regret por componente
 
-Para cada concurso:
+## Allocator regret
 
 ```text
-regret = hits_oracle_allocator - hits_policy
+allocator_regret = hits_oracle_allocator - hits_policy
+```
+
+## Distribution regret
+
+```text
+distribution_regret = hits_oracle_distribution - hits_selected_distribution
+```
+
+## Selector regret
+
+```text
+selector_regret = hits_oracle_selector - hits_selected_selector
+```
+
+## Full regret
+
+```text
+full_regret = hits_oracle_full - hits_ticket
 ```
 
 Registrar:
@@ -502,96 +436,70 @@ regret_2plus_rate
 max_regret
 ```
 
-Exemplo:
-
-```text
-[ALLOCATOR REGRET]
-policy        mean   median   regret=0   regret=1   regret>=2
-gain           ...     ...       ...        ...         ...
-uncertainty    ...     ...       ...        ...         ...
-margin         ...     ...       ...        ...         ...
-ratio          ...     ...       ...        ...         ...
-exact          ...     ...       ...        ...         ...
-```
-
-Essa análise responde diretamente:
-
-> **quanto o ticket perde por selecionar os cinco jogos errados para receber duplo?**
+Isso permite descobrir em qual componente existe maior espaço real de melhoria.
 
 ---
 
-# Similaridade entre allocators
+# Prioridade 2 — DistributionBacktest
 
-Muitas políticas podem produzir praticamente os mesmos cinco duplos. Medir a sobreposição média entre pares:
+A próxima expansão importante é **avaliar todas as distribuições viáveis das 19 marcações entre Top1, Top2 e Top3**, antes de assumir que `14 Top1 + 5 Top2` é estruturalmente ótimo.
 
-```text
-overlap(A,B) = quantidade de jogos em comum entre os 5 duplos
-```
+## Fase segura — Top1 sempre coberto
 
-Telemetria:
+Enquanto não existir evidência forte para remover Top1, os 14 jogos continuam contendo Top1. As cinco marcações extras podem ser distribuídas entre Top2 e Top3:
 
 ```text
-[ALLOCATOR OVERLAP]
-uncertainty x gain             ... / 5
-uncertainty x ratio            ... / 5
-uncertainty x exact            ... / 5
-uncertainty x top2_probability ... / 5
+T1 / T2 / T3
+14 / 5 / 0   ← baseline atual
+14 / 4 / 1
+14 / 3 / 2
+14 / 2 / 3
+14 / 1 / 4
+14 / 0 / 5
 ```
 
-Se duas políticas apresentarem overlap próximo de 5 e resultados equivalentes, tratá-las como redundantes.
+Essas seis composições preservam:
+
+```text
+14 marcações Top1
+5 marcações adicionais
+19 marcações totais
+9 secos
+5 duplos
+0 triplos
+```
+
+## Ponto essencial — distribuição não é posicionamento
+
+Saber que `14/4/1` é uma boa composição não responde:
+
+```text
+quais 5 jogos devem receber duplo?
+quais 4 recebem Top2?
+qual recebe Top3?
+```
+
+Portanto, cada distribuição deve ser avaliada junto da escolha das posições.
+
+Arquitetura proposta:
+
+```text
+DistributionSelector
+        ↓
+DoubleAllocator
+        ↓
+SecondMarkSelector / MarkingSelector
+        ↓
+Hard Constraints
+        ↓
+Ticket
+```
 
 ---
 
-# Comparação pareada entre estratégias
+# DistributionBacktest — métricas
 
-Resultados agregados podem esconder diferenças concurso a concurso.
-
-Para cada par de políticas, registrar:
-
-```text
-A > B
-A = B
-A < B
-mean_delta_hits
-```
-
-Exemplo:
-
-```text
-[PAIRWISE] uncertainty vs gain
-wins:   ...
-ties:   ...
-losses: ...
-mean delta: ...
-```
-
-Para o evento principal, transformar cada concurso em:
-
-```text
-1 = ticket fez >=13
-0 = ticket não fez >=13
-```
-
-Essa representação permite comparação pareada específica da cauda superior.
-
----
-
-# Backtest matricial — Allocator × SecondMarkSelector
-
-Comparar sistematicamente:
-
-```text
-                    Top2   Rec .05   Rec .10   Rec .15   Nested
-
-gain                 ...      ...       ...       ...      ...
-uncertainty          ...      ...       ...       ...      ...
-margin               ...      ...       ...       ...      ...
-ratio                ...      ...       ...       ...      ...
-exact                ...      ...       ...       ...      ...
-top2_probability     ...      ...       ...       ...      ...
-```
-
-Cada célula deve registrar:
+Para cada distribuição registrar:
 
 ```text
 14
@@ -607,21 +515,304 @@ median
 stddev
 ```
 
-Isso separa claramente:
+Telemetria esperada:
 
 ```text
-qual allocator escolhe melhor os cinco duplos?
-qual selector escolhe melhor T2/T3?
-qual combinação maximiza 13+?
+[DISTRIBUTION BACKTEST]
+
+T1/T2/T3     14   13   12    P13+     P12+     mean
+14/5/0        ...  ...  ...     ...       ...      ...
+14/4/1        ...  ...  ...     ...       ...      ...
+14/3/2        ...  ...  ...     ...       ...      ...
+14/2/3        ...  ...  ...     ...       ...      ...
+14/1/4        ...  ...  ...     ...       ...      ...
+14/0/5        ...  ...  ...     ...       ...      ...
 ```
+
+A seleção deve respeitar a função objetivo do projeto, com P13+ como métrica principal.
+
+---
+
+# OracleDistribution
+
+Criar um diagnóstico retrospectivo adicional:
+
+```text
+[ORACLE DISTRIBUTION]
+```
+
+Para cada concurso, usando o resultado real somente para diagnóstico:
+
+> qual das distribuições permitidas teria produzido o maior número de acertos após otimizar o posicionamento das cinco marcações extras?
+
+Registrar frequência de ótimo:
+
+```text
+14/5/0: ... concursos
+14/4/1: ... concursos
+14/3/2: ... concursos
+14/2/3: ... concursos
+14/1/4: ... concursos
+14/0/5: ... concursos
+```
+
+O OracleDistribution mede o teto potencial de abandonar a composição fixa `14/5/0`.
+
+---
+
+# Nested Distribution Selection
+
+Não selecionar a melhor distribuição usando os mesmos 415 concursos em que ela é avaliada.
+
+Fluxo obrigatório:
+
+```text
+histórico disponível até N
+        ↓
+avaliar distribuições somente nesse passado
+        ↓
+selecionar distribuição
+        ↓
+congelar a escolha
+        ↓
+aplicar no concurso N+1
+        ↓
+registrar resultado
+        ↓
+incluir N+1 no histórico
+        ↓
+repetir
+```
+
+Exemplo:
+
+```text
+Concursos 1..100 → seleciona distribuição
+Concurso 101     → teste real
+Concursos 1..101 → seleciona novamente
+Concurso 102     → teste real
+```
+
+Somente o resultado **nested walk-forward** pode promover uma distribuição diferente do baseline.
+
+Telemetria:
+
+```text
+[NESTED DISTRIBUTION]
+selected_usage:
+14/5/0: ...
+14/4/1: ...
+14/3/2: ...
+...
+
+baseline P13+:
+nested P13+:
+delta P13+:
+
+baseline P12+:
+nested P12+:
+delta P12+:
+```
+
+---
+
+# Matriz Distribution × Allocator
+
+A melhor distribuição pode depender de como os cinco duplos são posicionados.
+
+Comparar:
+
+```text
+                    14/5/0  14/4/1  14/3/2  14/2/3  14/1/4  14/0/5
+
+top2_probability       ...      ...      ...      ...      ...      ...
+uncertainty             ...      ...      ...      ...      ...      ...
+margin                  ...      ...      ...      ...      ...      ...
+ratio                   ...      ...      ...      ...      ...      ...
+exact_probability       ...      ...      ...      ...      ...      ...
+```
+
+Cada célula deve registrar no mínimo:
+
+```text
+P13+
+P12+
+n14
+n13
+n12
+mean
+stddev
+```
+
+---
+
+# Matriz Distribution × Allocator × Selector
+
+Depois do teste bidimensional, expandir para:
+
+```text
+Distribution
+     ×
+DoubleAllocator
+     ×
+SecondMarkSelector
+```
+
+O objetivo é separar três perguntas:
+
+```text
+1. quantos Top2/Top3 devem existir nas cinco marcações extras?
+2. quais cinco jogos devem receber duplo?
+3. quais desses duplos devem usar Top2 ou Top3?
+```
+
+A unidade final de comparação continua sendo o **ticket completo**.
+
+---
+
+# DistributionSelector condicionado ao concurso
+
+Somente depois de validar que mais de uma distribuição apresenta sinal fora da amostra, estudar seleção dinâmica por perfil do concurso.
+
+Features candidatas:
+
+```text
+mean_p_top1
+mean_p_top2
+mean_p_top3
+mean_gap_12
+mean_gap_23
+min_gap_12
+n_equilibrated_games
+mean_entropy
+max_entropy
+```
+
+Exemplo conceitual:
+
+```text
+concurso muito concentrado → 14/5/0
+concurso com T2/T3 próximos → 14/4/1 ou 14/3/2
+```
+
+Qualquer regra, árvore, meta-modelo ou threshold deve ser treinado e selecionado dentro de nested walk-forward.
+
+---
+
+# Expansão posterior — secos Top2/Top3
+
+Somente depois da fase segura, permitir distribuições com menos de 14 marcações Top1.
+
+Exemplos:
+
+```text
+13/5/1
+12/6/1
+12/5/2
+11/6/2
+...
+```
+
+Isso implica que algum jogo pode ter:
+
+```text
+SECO Top2
+ou
+SECO Top3
+```
+
+Essa expansão exige evidência muito mais forte porque as correções atuais do Top1 não superaram o baseline.
+
+Regra de promoção:
+
+> distribuições com menos de 14 Top1 só podem entrar no ticket se superarem o baseline em nested walk-forward, P13+ e testes de robustez.
+
+---
+
+# FullMarkingOptimizer
+
+Última etapa da expansão do espaço de busca.
+
+Permitir por jogo:
+
+```text
+SECO:
+T1
+T2
+T3
+
+DUPLO:
+T1T2
+T1T3
+T2T3
+```
+
+Sempre respeitando:
+
+```text
+9 secos
+5 duplos
+0 triplos
+19 marcações
+```
+
+O espaço completo é grande. Portanto, evitar brute force ingênuo e usar busca hierárquica:
+
+```text
+DistributionSelector
+        ↓
+DoubleAllocator
+        ↓
+MarkingSelector
+        ↓
+ConstraintEngine
+        ↓
+TicketScorer
+```
+
+O FullMarkingOptimizer só deve ser implementado depois de o DistributionBacktest demonstrar que há ganho robusto ao expandir além de `14/5/0`.
+
+---
+
+# Comparação pareada
+
+Para cada par de estratégias registrar:
+
+```text
+A > B
+A = B
+A < B
+mean_delta_hits
+```
+
+Também registrar distribuição de deltas:
+
+```text
++3
++2
++1
+ 0
+-1
+-2
+-3
+```
+
+Para P13+:
+
+```text
+A >=13 e B <13
+B >=13 e A <13
+ambos >=13
+nenhum >=13
+```
+
+Repetir para P12+.
 
 ---
 
 # Bootstrap e significância
 
-Usar comparação **pareada por concurso**.
-
-Implementar pelo menos:
+Usar comparação pareada por concurso:
 
 ```text
 bootstrap >= 1.000 reamostragens
@@ -631,24 +822,11 @@ IC95% de Δmean
 probabilidade empírica de A > B
 ```
 
-Para segunda marcação:
-
-```text
-IC95% de net_recovery_gain
-IC95% do Second-Mark win rate
-```
-
-Quando o intervalo incluir o baseline, registrar:
-
-```text
-estatisticamente indistinguível
-```
-
-Devido ao baixo número atual de concursos com 13+, diferenças de um ou dois concursos não devem ser interpretadas como evidência forte.
+Devido ao baixo número de concursos com 13+, diferenças de um ou dois concursos não devem ser interpretadas como evidência forte.
 
 ---
 
-# Segmentações prioritárias
+# Features de valor marginal
 
 ## gap_12
 
@@ -656,102 +834,31 @@ Devido ao baixo número atual de concursos com 13+, diferenças de um ou dois co
 gap_12 = p(Top1) - p(Top2)
 ```
 
-Faixas iniciais:
-
-```text
-0–3 p.p.
-3–5 p.p.
-5–10 p.p.
-10–20 p.p.
-20+ p.p.
-```
-
-Objetivo: verificar em quais regimes o duplo tem maior valor marginal.
-
 ## gap_23
 
 ```text
 gap_23 = p(Top2) - p(Top3)
 ```
 
-Faixas:
-
-```text
-0–2 p.p.
-2–5 p.p.
-5–10 p.p.
-10+ p.p.
-```
-
-Hipótese:
-
-> recovery pode agregar mais quando Top2 e Top3 são probabilisticamente próximos.
-
-## Recovery × gap_23
-
-```text
-recovery_advantage >= R
-AND
-gap_23 <= G
-```
-
-Grid inicial:
-
-```text
-R ∈ {0.05, 0.10, 0.15}
-G ∈ {0.02, 0.05, 0.10}
-```
-
-A seleção deve ocorrer dentro do nested walk-forward.
-
-## p(Top1)
-
-```text
-33–40%
-40–45%
-45–50%
-50–60%
-60%+
-```
-
-## Entropia
+## entropia
 
 ```text
 H = -Σ p(i) × log(p(i))
 ```
 
-A entropia permite distinguir um jogo genuinamente equilibrado em três resultados de um jogo com apenas Top1 e Top2 muito próximos.
-
----
-
-# Double Value Score
-
-Uma formulação futura pode estimar explicitamente o valor esperado da marcação extra:
+## double_value
 
 ```text
 double_value ≈ P(Top1_miss) × P(second_mark_hit | Top1_miss, contexto)
 ```
 
-Ou comparar scores combinados:
-
-```text
-score_T2 = α × p(Top2) + (1-α) × recovery_top2
-score_T3 = α × p(Top3) + (1-α) × recovery_top3
-```
-
-Grid inicial:
-
-```text
-α ∈ {0.00, 0.25, 0.50, 0.75, 1.00}
-```
-
-Qualquer `α`, threshold, janela ou feature deve ser escolhido somente usando informação disponível no passado de cada passo nested.
+Essas features devem primeiro servir como diagnóstico e somente depois alimentar seletores treinados.
 
 ---
 
 # Estabilidade temporal
 
-Comparar desempenho em:
+Comparar:
 
 ```text
 primeiro terço
@@ -759,7 +866,7 @@ segundo terço
 último terço
 ```
 
-E futuramente:
+Posteriormente:
 
 ```text
 expanding window
@@ -768,17 +875,17 @@ rolling 100
 rolling 200
 ```
 
-Também pode ser testado decay temporal:
+Decay temporal candidato:
 
 ```text
-half-life 25 concursos
+half-life 25
 half-life 50
 half-life 100
 half-life 200
 sem decay
 ```
 
-A seleção da janela ou decay deve ocorrer em nested walk-forward. Não selecionar retrospectivamente a configuração vencedora no mesmo período de teste.
+A escolha da janela ou decay deve ocorrer dentro do nested walk-forward.
 
 ---
 
@@ -792,24 +899,7 @@ Log Loss:          0.985557
 ECE:               0.012378
 ```
 
-A calibração permanece diagnóstica até demonstrar ganho no ticket em walk-forward.
-
-## Reliability por faixa
-
-Adicionar relatório separado para Top1, Top2 e Top3:
-
-```text
-probabilidade prevista | frequência observada
-30–35%                  | ...
-35–40%                  | ...
-40–45%                  | ...
-45–50%                  | ...
-50–60%                  | ...
-60–70%                  | ...
-70%+                     | ...
-```
-
-Salvar também:
+Adicionar reliability tables separadas para Top1/Top2/Top3 e salvar:
 
 ```text
 output/calibration_top1.csv
@@ -821,7 +911,7 @@ output/calibration_top3.csv
 
 # Hard Constraints
 
-Todo ticket deve conter exatamente:
+Todo ticket final deve conter exatamente:
 
 ```text
 9 secos
@@ -839,8 +929,6 @@ Flamengo mandante  → incluir 1
 Flamengo visitante → incluir 2
 ```
 
-As constraints devem valer em treino, backtest e previsão final.
-
 ## Palmeiras — Soft Constraint
 
 Favorecer, quando o custo probabilístico for pequeno, soluções que excluam a vitória do **PALMEIRAS/SP**.
@@ -851,7 +939,7 @@ Limiar atual:
 0.03
 ```
 
-O limiar é experimental e só deve ser alterado mediante validação walk-forward.
+O limiar é experimental e só deve ser alterado mediante validação adequada.
 
 ---
 
@@ -865,12 +953,25 @@ Garantir permanentemente:
 5 duplos
 0 triplos
 19 marcações
-Top1 coberto no baseline
 vitória do Flamengo coberta
 probabilidades somando 1
 Top1/Top2/Top3 distintos
 desempate 1 > 2 > X
 nenhum vazamento temporal
+```
+
+No baseline seguro:
+
+```text
+Top1 coberto nos 14 jogos
+```
+
+Durante DistributionBacktest:
+
+```text
+count(T1) + count(T2) + count(T3) = 19 marcações de ranking
+exatamente 5 jogos com duas marcações
+nenhum jogo com três marcações
 ```
 
 Em toda rotina histórica:
@@ -879,13 +980,11 @@ Em toda rotina histórica:
 assert train_contest < test_contest
 ```
 
-Também testar equivalência entre `gain` e `top2_probability` enquanto `gain = p(Top2)`.
-
 ---
 
 # Controle de experimentos
 
-Criar:
+Criar/manter:
 
 ```text
 output/experiments.csv
@@ -896,6 +995,7 @@ Campos sugeridos:
 ```text
 timestamp
 model
+distribution
 allocator
 second_mark_selector
 threshold
@@ -912,18 +1012,16 @@ stddev
 git_commit
 ```
 
-Isso permite reproduzir resultados e evita perder o contexto de qual versão produziu cada métrica.
-
 ---
 
 # Telemetria resumida
 
-Ao final de cada execução, imprimir um bloco compacto:
+Ao final de cada execução:
 
 ```text
 [SUMMARY]
-
 Top1 accuracy:
+Selected distribution:
 Selected allocator:
 Selected second mark:
 Historical P13+:
@@ -931,6 +1029,7 @@ Historical P12+:
 Best experimental P13+:
 
 Oracle allocator P13+:
+Oracle distribution P13+:
 Oracle selector P13+:
 Oracle full P13+:
 
@@ -939,23 +1038,6 @@ Current contest P13:
 Current contest P13+:
 Current contest E[hits]:
 ```
-
-Manter os detalhes completos acima desse resumo para debugging.
-
----
-
-# Distribution Backtest e FullMarkingOptimizer
-
-Essas etapas ficam **depois** da validação da arquitetura atual.
-
-Espaço futuro:
-
-```text
-Seco:  T1 | T2 | T3
-Duplo: T1T2 | T1T3 | T2T3
-```
-
-Antes de abrir completamente esse espaço, o projeto deve quantificar com o `OracleFull` quanto potencial existe na arquitetura atual e demonstrar sinal robusto fora da amostra.
 
 ---
 
@@ -1003,78 +1085,76 @@ python -m unittest discover -v
 ## Concluído
 
 - [x] pipeline único de constraints;
-- [x] invariantes 9/5/0;
-- [x] 19 marcações;
-- [x] políticas `gain`, `uncertainty`, `margin`, `ratio`, `hist_top1`, `hist_top2` e `exact`;
+- [x] invariantes 9/5/0 e 19 marcações;
+- [x] políticas `gain`, `top2_probability`, `uncertainty`, `margin`, `ratio`, `hist_top1`, `hist_top2` e `exact`;
 - [x] `P(14)`, `P(13)`, `P(>=13)` e `E[acertos]`;
 - [x] walk-forward sem vazamento temporal;
 - [x] backtest 10–14;
 - [x] P13+ e P12+ empíricos;
-- [x] `output/backtest.csv`;
 - [x] Disagreement Test do Top1;
 - [x] `top1_residual`, `top1_lift`, `top1_reliability`;
 - [x] `p(top1_meta)`;
 - [x] evidência para congelar correções do Top1;
-- [x] `error_recovery_score`;
+- [x] Error Recovery Score;
 - [x] Second-Mark Disagreement;
-- [x] thresholds `0.00`, `0.02`, `0.05`, `0.10`, `0.15`;
+- [x] thresholds de recovery;
 - [x] IC95% por threshold;
-- [x] nested walk-forward para threshold;
-- [x] `net_recovery_gain`;
-- [x] segmentação inicial por `gap_23`;
-- [x] evidência para manter `top2_baseline` como SecondMarkSelector final.
+- [x] nested walk-forward do recovery;
+- [x] evidência para manter `top2_baseline`;
+- [x] overlap entre allocators;
+- [x] comparação pareada inicial `gain vs uncertainty`.
 
 ## Fase 1 — diagnóstico estrutural
 
-1. [x] implementar `top2_probability` como baseline explícito;
-2. [x] medir overlap entre allocators;
-3. [x] implementar comparação pareada concurso a concurso;
-4. [ ] implementar `OracleAllocator`;
-5. [ ] implementar `OracleSecondMark`;
-6. [ ] implementar `OracleFull`;
-7. [ ] implementar regret por allocator;
-8. [ ] reportar teto de P13+/P12+ de cada oracle.
+1. [ ] implementar `OracleAllocator`;
+2. [ ] implementar `OracleSecondMark`;
+3. [ ] implementar `OracleFull`;
+4. [ ] implementar regret por allocator/selector/full;
+5. [ ] adicionar pairwise específico de P13+/P12+;
+6. [ ] adicionar distribuição dos deltas de acertos.
 
-## Fase 2 — avaliação conjunta do ticket
+## Fase 2 — distribuição das 19 marcações
 
-9. [ ] implementar matriz `Allocator × SecondMarkSelector`;
-10. [ ] backtest ticket-level de `Top2`, `Rec .05`, `Rec .10`, `Rec .15` e `Nested`;
-11. [ ] bootstrap pareado por concurso;
-12. [ ] IC95% de `ΔP13+`, `ΔP12+` e `Δmean`;
-13. [ ] teste pareado do evento `>=13`;
-14. [ ] medir estabilidade temporal das políticas.
+7. [ ] implementar `DistributionBacktest` seguro `14/5/0 → 14/0/5`;
+8. [ ] otimizar posicionamento dentro de cada distribuição;
+9. [ ] implementar `OracleDistribution`;
+10. [ ] implementar regret de distribuição;
+11. [ ] implementar `NestedDistributionSelector`;
+12. [ ] registrar frequência de uso de cada distribuição no nested;
+13. [ ] comparar `Distribution × Allocator`;
+14. [ ] comparar `Distribution × Allocator × Selector`;
+15. [ ] bootstrap pareado das melhores distribuições.
 
-## Fase 3 — features de valor marginal
+## Fase 3 — seleção dinâmica e valor marginal
 
-15. [ ] adicionar `gap_12`;
-16. [ ] completar regra bidimensional `recovery_advantage × gap_23`;
-17. [ ] segmentar por faixa de `p(Top1)`;
+16. [ ] adicionar `gap_12`;
+17. [ ] aprofundar `gap_23`;
 18. [ ] adicionar entropia;
 19. [ ] implementar `double_value_score`;
-20. [ ] melhorar `recovery_context` incrementalmente;
+20. [ ] testar `DistributionSelector` condicionado ao perfil do concurso;
 21. [ ] implementar `second_mark_meta` somente se houver sinal suficiente.
 
 ## Fase 4 — robustez temporal e calibração
 
 22. [ ] comparar expanding × rolling windows;
-23. [ ] testar decay temporal dentro de nested walk-forward;
+23. [ ] testar decay temporal dentro do nested;
 24. [ ] gerar reliability tables de Top1/Top2/Top3;
 25. [ ] salvar CSVs de calibração;
-26. [ ] criar `output/experiments.csv`;
-27. [ ] incluir hash/commit do Git nos experimentos.
+26. [ ] criar/manter `output/experiments.csv` com commit do Git.
 
-## Fase 5 — expansão do espaço de marcações
+## Fase 5 — FullMarkingOptimizer
 
-28. [ ] implementar `distribution_backtest`;
-29. [ ] avaliar `T2T3` somente se Oracle/validation justificar;
-30. [ ] avaliar secos Top2/Top3 somente se houver evidência fora da amostra;
-31. [ ] implementar `FullMarkingOptimizer`;
+27. [ ] permitir distribuições com menos de 14 Top1 somente após evidência nested;
+28. [ ] avaliar secos Top2/Top3;
+29. [ ] avaliar duplo `T2T3`;
+30. [ ] implementar `FullMarkingOptimizer` hierárquico;
+31. [ ] comparar FullMarkingOptimizer com baseline em P13+;
 32. [ ] remover/substituir desempates arbitrários do `exact`;
 33. [ ] otimizar o limiar do Palmeiras usando validação adequada.
 
 ---
 
-# Critério de promoção de uma estratégia
+# Critério de promoção
 
 Uma estratégia experimental só pode substituir o baseline quando:
 
@@ -1092,7 +1172,7 @@ manter estabilidade temporal
 respeitar todas as Hard Constraints
 ```
 
-Melhorar apenas P12+, média, accuracy ou win rate individual **não é suficiente** para promoção quando P13+ piora.
+Melhorar apenas P12+, média, accuracy ou win rate individual **não é suficiente** quando P13+ piora.
 
 ---
 
@@ -1101,15 +1181,17 @@ Melhorar apenas P12+, média, accuracy ou win rate individual **não é suficien
 ```text
 p(Top1) preservado
       +
-DoubleAllocator validado
-      +
-SecondMarkSelector validado
-      +
 Oracle Decomposition
       +
-Regret / comparação pareada
+DistributionBacktest
       +
-Nested Walk-Forward
+Nested Distribution Selection
+      +
+DoubleAllocator
+      +
+SecondMarkSelector
+      +
+Regret / comparação pareada
       +
 Incerteza estatística
       +
