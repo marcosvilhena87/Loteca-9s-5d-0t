@@ -17,6 +17,17 @@ def main() -> None:
     model = train(args.history, args.model, args.backtest_output)
     print(f"[TRAIN] {model['contests_evaluated']} concursos; Top hits: {model['rank_hit_rates']}")
     print(f"[BACKTEST] {model['policy_backtest']}")
+    allocator = model["allocator_diagnostics"]
+    for left, right in (("uncertainty", "gain"), ("uncertainty", "top2_probability"),
+                        ("uncertainty", "ratio"), ("uncertainty", "exact")):
+        key = next(key for key in allocator["overlap_mean_of_5"]
+                   if set(key.split("__")) == {left, right})
+        print(f"[ALLOCATOR OVERLAP] {left} x {right}: "
+              f"{allocator['overlap_mean_of_5'][key]:.3f} / 5")
+    comparison = allocator["pairwise"]["gain__uncertainty"]
+    print(f"[PAIRWISE] gain vs uncertainty: {comparison['wins']} vitórias | "
+          f"{comparison['ties']} empates | {comparison['losses']} derrotas | "
+          f"delta médio {comparison['mean_delta_hits']:+.4f}")
     print(f"[WALK-FORWARD] {model['walk_forward']['test_contests']} concursos de teste; "
           f"janela inicial: {model['walk_forward']['minimum_history']}")
     diagnostics = model["probability_diagnostics"]

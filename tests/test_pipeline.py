@@ -5,6 +5,7 @@ from pathlib import Path
 from scripts.common import Match, threshold_probability, ticket_metrics
 from scripts.predict_results import optimize, predict
 from scripts.train_model import (exact_ticket, heuristic_ticket, probability_diagnostics,
+                                 allocator_diagnostics,
                                  allocated_ticket, error_recovery_model, historical_ticket,
                                  position_rank_hit_rates, recovery_context, recovery_scores,
                                  select_second_mark,
@@ -50,6 +51,28 @@ class PipelineTests(unittest.TestCase):
             self.assertGreaterEqual(
                 exact_probability, ticket_metrics_for(games, heuristic)["p13_plus"] - 1e-15
             )
+
+    def test_top2_probability_is_explicitly_equivalent_to_gain(self):
+        games = [Match(1, i + 1, "A", "B", {
+            "1": .50 + i / 1000, "X": .30 - i / 2000, "2": .20 - i / 2000
+        }) for i in range(14)]
+        gain, _ = heuristic_ticket(games, "gain")
+        top2, _ = heuristic_ticket(games, "top2_probability")
+        self.assertEqual(gain, top2)
+
+    def test_allocator_diagnostics_are_paired_and_leak_free(self):
+        contests = {
+            concurso: [Match(concurso, i + 1, "A", "B",
+                {"1": .50, "X": .30, "2": .20}, "1") for i in range(14)]
+            for concurso in range(1, 4)
+        }
+        diagnostics = allocator_diagnostics(contests, minimum_history=2)
+        self.assertTrue(diagnostics["no_future_information"])
+        self.assertEqual(diagnostics["test_contests"], 1)
+        self.assertEqual(diagnostics["overlap_mean_of_5"]["gain__top2_probability"], 5.0)
+        comparison = diagnostics["pairwise"]["gain__top2_probability"]
+        self.assertEqual((comparison["wins"], comparison["ties"], comparison["losses"]),
+                         (0, 1, 0))
 
     def test_training_is_reproducible(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -115,7 +138,7 @@ class PipelineTests(unittest.TestCase):
             output = Path(directory) / "backtest.csv"
             walk_forward_backtest(contests, minimum_history=2, output_path=output)
             rows = output.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(rows), 8)  # header + seven strategies for one test contest
+        self.assertEqual(len(rows), 9)  # header + eight strategies for one test contest
         self.assertIn("p13_plus_empirical;p12_plus_empirical;double_games;ticket", rows[0])
         self.assertTrue(all("T1=14|T2=5|T3=0" in row for row in rows[1:]))
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from scripts.common import Match, group_contests, normalize_team, read_matches, ticket_metrics
 
-PROBABILITY_POLICIES = ("gain", "uncertainty", "margin", "ratio")
+PROBABILITY_POLICIES = ("gain", "top2_probability", "uncertainty", "margin", "ratio")
 HISTORICAL_POLICIES = ("hist_top1", "hist_top2")
 POLICIES = (*PROBABILITY_POLICIES, *HISTORICAL_POLICIES)
 MIN_WALK_FORWARD_CONTESTS = 30
@@ -553,10 +553,70 @@ def priority(match: Match, policy: str) -> float:
     p1, p2 = match.probabilities[first], match.probabilities[second]
     return {
         "gain": p2,
+        # Keep this nominal baseline separate from ``gain``.  Gain may evolve
+        # into a conditional value estimate, while this policy must always mean
+        # the five largest raw p(Top2) values.
+        "top2_probability": p2,
         "uncertainty": 1.0 - p1,
         "margin": 1.0 - (p1 - p2),
         "ratio": p2 / p1,
     }[policy]
+
+
+def allocator_diagnostics(contests: dict[int, list[Match]],
+                          minimum_history: int = MIN_WALK_FORWARD_CONTESTS
+                          ) -> dict[str, object]:
+    """Compare allocators contest by contest without using future outcomes.
+
+    Overlap exposes policies that merely rename the same five doubles. Pairwise
+    results retain the dependence between tickets and separately compare the
+    rare target event (13+), avoiding conclusions based only on mean accuracy.
+    """
+    contest_ids = sorted(contests)
+    ordered = [contests[key] for key in contest_ids]
+    if not 1 <= minimum_history < len(ordered):
+        raise ValueError("janela inicial inválida para diagnóstico de allocators")
+    strategies = (*POLICIES, "exact")
+    indexes_by_policy = {policy: [] for policy in strategies}
+    hits_by_policy = {policy: [] for policy in strategies}
+    for index in range(minimum_history, len(ordered)):
+        assert contest_ids[index - 1] < contest_ids[index]
+        rates = position_rank_hit_rates(ordered[:index])
+        games = ordered[index]
+        for policy in strategies:
+            ticket, _ = ticket_for_policy(games, policy, rates)
+            indexes_by_policy[policy].append(
+                {i for i, pick in enumerate(ticket) if len(pick) == 2}
+            )
+            hits_by_policy[policy].append(sum(
+                game.actual in pick for game, pick in zip(games, ticket)
+            ))
+    overlap: dict[str, float] = {}
+    pairwise: dict[str, dict[str, int | float]] = {}
+    for left, right in combinations(strategies, 2):
+        key = f"{left}__{right}"
+        left_hits, right_hits = hits_by_policy[left], hits_by_policy[right]
+        overlap[key] = round(statistics.fmean(
+            len(a & b) for a, b in zip(indexes_by_policy[left], indexes_by_policy[right])
+        ), 6)
+        deltas = [a - b for a, b in zip(left_hits, right_hits)]
+        left_tail = [value >= 13 for value in left_hits]
+        right_tail = [value >= 13 for value in right_hits]
+        pairwise[key] = {
+            "wins": sum(delta > 0 for delta in deltas),
+            "ties": sum(delta == 0 for delta in deltas),
+            "losses": sum(delta < 0 for delta in deltas),
+            "mean_delta_hits": round(statistics.fmean(deltas), 8),
+            "p13_plus_wins": sum(a and not b for a, b in zip(left_tail, right_tail)),
+            "p13_plus_ties": sum(a == b for a, b in zip(left_tail, right_tail)),
+            "p13_plus_losses": sum(b and not a for a, b in zip(left_tail, right_tail)),
+        }
+    return {
+        "test_contests": len(ordered) - minimum_history,
+        "no_future_information": True,
+        "overlap_mean_of_5": overlap,
+        "pairwise": pairwise,
+    }
 
 
 def team_result(match: Match, needle: str) -> str | None:
@@ -801,7 +861,7 @@ def train(history_path: str, model_path: str,
     recovery_audit = walk_forward_second_mark(contests)
     nested_recovery = nested_walk_forward_second_mark(contests)
     model = {
-        "version": 10, "selected_policy": selected,
+        "version": 11, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -812,6 +872,7 @@ def train(history_path: str, model_path: str,
         "position_rank_hit_rates": position_rank_hit_rates(list(contests.values())),
         "rank_hit_rates": [round(count / sum(rank_hits), 6) for count in rank_hits],
         "probability_diagnostics": probability_diagnostics(contests),
+        "allocator_diagnostics": allocator_diagnostics(contests),
         "top1_meta": top1_meta,
         "top1_reliability": {
             "walk_forward_disagreement": walk_forward_reliability(contests),
