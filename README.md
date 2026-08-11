@@ -483,7 +483,7 @@ capacidade da seleção pré-jogo
 
 ---
 
-# Próxima prioridade — ExactXYZP13Optimizer
+# ExactXYZP13Optimizer — implementado
 
 O DP XYZ atual maximiza:
 
@@ -506,12 +506,19 @@ P14 = produto(q_i)
 P13 = soma_i [(1-q_i) × produto(q_j, j != i)]
 ```
 
-Criar dois otimizadores explícitos:
+Dois otimizadores explícitos estão disponíveis:
 
 ```text
 XYZ_COVERAGE
 XYZ_DIRECT_P13
 ```
+
+`XYZ_DIRECT_P13` mantém, em cada estado estrutural do DP, a fronteira de
+Pareto exata de `P(14)` e `P(13)`. Estados dominados são descartados, pois a
+transição Poisson-binomial é monotônica nas duas probabilidades. Assim, o
+ticket final maximiza diretamente `P(14) + P(13)` sem enumerar `6^14`
+combinações e sem relaxar `9 secos / 5 duplos / 0 triplos` ou a cobertura da
+vitória do Flamengo.
 
 Telemetria:
 
@@ -519,6 +526,10 @@ Telemetria:
 [XYZ OBJECTIVE COMPARISON]
 distribution | coverage historical P13+ | direct historical P13+ | delta
 ```
+
+Também são registrados o ganho médio modelado de `P13+` e a verificação de
+que o objetivo direto nunca é pior que `coverage_sum` na probabilidade
+pré-jogo do próprio ticket.
 
 Registrar também a probabilidade teórica prevista pelo modelo:
 

@@ -760,7 +760,8 @@ def xyz_distribution_id(distribution: tuple[int, int, int]) -> str:
     return "XYZ_{:02d}_{:02d}_{:02d}".format(*distribution)
 
 
-def xyz_distribution_ticket(games: list[Match], distribution: tuple[int, int, int]
+def xyz_distribution_ticket(games: list[Match], distribution: tuple[int, int, int],
+                            objective: str = "coverage"
                             ) -> tuple[list[set[str]], list[str]]:
     """Place a fixed XYZ composition using pre-match probabilities only.
 
@@ -769,7 +770,9 @@ def xyz_distribution_ticket(games: list[Match], distribution: tuple[int, int, in
     Flamengo's victory is filtered into every candidate state, rather than
     repaired afterwards (which could silently alter the requested XYZ totals).
     """
-    return _xyz_distribution_tickets(games, (distribution,))[distribution]
+    return _xyz_distribution_tickets(
+        games, (distribution,), objective=objective,
+    )[distribution]
 
 
 def true_oracle_xyz_ticket(
@@ -790,7 +793,7 @@ def true_oracle_xyz_ticket(
 
 def _xyz_distribution_tickets(
     games: list[Match], distributions: tuple[tuple[int, int, int], ...] | list[tuple[int, int, int]],
-    *, use_actual_results: bool = False,
+    *, use_actual_results: bool = False, objective: str = "coverage",
 ) -> dict[tuple[int, int, int], tuple[list[set[str]], list[str]]]:
     """Solve several XYZ compositions in one DP pass.
 
@@ -798,6 +801,10 @@ def _xyz_distribution_tickets(
     requested frontier once makes end-to-end walk-forward telemetry practical
     while producing the same deterministic ticket as an isolated solve.
     """
+    if objective not in ("coverage", "direct_p13"):
+        raise ValueError("objetivo XYZ deve ser coverage ou direct_p13")
+    if use_actual_results and objective != "coverage":
+        raise ValueError("oracle XYZ aceita somente o objetivo coverage")
     if len(games) != 14 or not distributions or any(
             not is_xyz_distribution_valid(*point) for point in distributions):
         raise ValueError("XYZ exige 14 jogos e distribuições viáveis")
@@ -812,19 +819,27 @@ def _xyz_distribution_tickets(
     # (X, Y, doubles) substantially reduces tuple allocation in the hot loop.
     deltas = ((1, 0, 0), (0, 1, 0), (0, 0, 0),
               (1, 1, 1), (1, 0, 1), (0, 1, 1))
-    states: dict[tuple[int, int, int], tuple[float, int]] = {(0, 0, 0): (0.0, 0)}
+    # ``direct_p13`` retains the exact Pareto frontier of (P(all hits),
+    # P(exactly one miss)) for every structural state.  Dominated pairs can be
+    # discarded safely because the Poisson-binomial transition is monotone in
+    # both values.  This makes the optimizer exact without enumerating 6^14
+    # complete assignments.
+    if objective == "coverage":
+        states = {(0, 0, 0): [(0.0, 0.0, 0.0, 0)]}
+    else:
+        states = {(0, 0, 0): [(1.0, 0.0, 0.0, 0)]}
     for game_index, game in enumerate(games):
         remaining_games = 13 - game_index
         forced_result = team_result(game, "FLAMENGO")
         forced_rank = game.ranking.index(forced_result) if forced_result else None
-        updated = {}
+        updated: dict[tuple[int, int, int], list[tuple[float, float, float, int]]] = {}
         action_coverages = tuple(
             float(any(game.actual == game.ranking[rank] for rank in action))
             if use_actual_results else
             sum(game.probabilities[game.ranking[rank]] for rank in action)
             for action in actions
         )
-        for (used_x, used_y, used_doubles), (score, path_code) in states.items():
+        for (used_x, used_y, used_doubles), candidates in states.items():
             for action_index, action in enumerate(actions):
                 if forced_rank is not None and forced_rank not in action:
                     continue
@@ -838,18 +853,42 @@ def _xyz_distribution_tickets(
                         rank_counts[rank] + remaining_games < minimums[rank]
                         for rank in range(3)):
                     continue
-                candidate = (score + action_coverages[action_index],
-                             path_code * 6 + action_index)
-                if key not in updated or candidate[0] > updated[key][0] or (
-                        candidate[0] == updated[key][0] and candidate[1] < updated[key][1]):
-                    updated[key] = candidate
-        states = updated
+                q = action_coverages[action_index]
+                bucket = updated.setdefault(key, [])
+                for p_all, p_one, coverage, path_code in candidates:
+                    if objective == "coverage":
+                        bucket.append((p_all + q, 0.0, 0.0,
+                                       path_code * 6 + action_index))
+                    else:
+                        bucket.append((p_all * q, p_one * q + p_all * (1.0 - q),
+                                       coverage + q, path_code * 6 + action_index))
+        states = {}
+        for key, candidates in updated.items():
+            if objective == "coverage":
+                states[key] = [max(candidates, key=lambda item: (item[0], -item[3]))]
+                continue
+            # Descending P(all) means a candidate survives exactly when its
+            # P(one miss) exceeds every candidate with at least as much P(all).
+            ordered = sorted(candidates, key=lambda item: (-item[0], -item[1],
+                                                           -item[2], item[3]))
+            frontier = []
+            best_one = -1.0
+            for candidate in ordered:
+                if candidate[1] > best_one:
+                    frontier.append(candidate)
+                    best_one = candidate[1]
+            states[key] = frontier
     solved = {}
     for distribution in distributions:
         final = (distribution[0], distribution[1], 5)
         if final not in states:
             raise ValueError("Hard Constraint do Flamengo torna a distribuição XYZ inviável")
-        path_code = states[final][1]
+        if objective == "coverage":
+            path_code = states[final][0][3]
+        else:
+            path_code = max(states[final], key=lambda item: (
+                item[0] + item[1], item[0], item[2], -item[3],
+            ))[3]
         action_indexes = [0] * 14
         for index in range(13, -1, -1):
             path_code, action_indexes[index] = divmod(path_code, 6)
@@ -857,7 +896,8 @@ def _xyz_distribution_tickets(
                   for game, action_index in zip(games, action_indexes)]
         if sorted(map(len, ticket)) != [1] * 9 + [2] * 5 or sum(map(len, ticket)) != 19:
             raise AssertionError("otimizador XYZ violou a estrutura 9/5/0")
-        notes = [f"XYZ solicitado/efetivo: {xyz_distribution_id(distribution)}"]
+        notes = [f"XYZ solicitado/efetivo: {xyz_distribution_id(distribution)}",
+                 f"objetivo XYZ: {objective}"]
         for game, pick in zip(games, ticket):
             flamengo_win = team_result(game, "FLAMENGO")
             if flamengo_win:
@@ -1147,6 +1187,10 @@ def xyz_distribution_backtest(
         raise ValueError("janela inicial inválida para backtest XYZ")
     distributions = generate_xyz_radius(center, radius)
     hit_history = {xyz_distribution_id(point): [] for point in distributions}
+    direct_hit_history = {key: [] for key in hit_history}
+    modeled_improvements = {key: [] for key in hit_history}
+    modeled_probabilities = {key: {"coverage": [], "direct_p13": []}
+                             for key in hit_history}
     oracle_hits: list[int] = []
     oracle_usage = {key: 0 for key in hit_history}
 
@@ -1155,11 +1199,21 @@ def xyz_distribution_backtest(
         games = contests[contest_ids[position]]
         contest_hits: list[tuple[int, int, str]] = []
         tickets = _xyz_distribution_tickets(games, distributions)
+        direct_tickets = _xyz_distribution_tickets(
+            games, distributions, objective="direct_p13",
+        )
         for point in distributions:
             key = xyz_distribution_id(point)
             ticket, _ = tickets[point]
             hits = _ticket_hits(games, ticket)
             hit_history[key].append(hits)
+            direct_ticket = direct_tickets[point][0]
+            direct_hit_history[key].append(_ticket_hits(games, direct_ticket))
+            coverage_probability = ticket_metrics_for(games, ticket)["p13_plus"]
+            direct_probability = ticket_metrics_for(games, direct_ticket)["p13_plus"]
+            modeled_probabilities[key]["coverage"].append(coverage_probability)
+            modeled_probabilities[key]["direct_p13"].append(direct_probability)
+            modeled_improvements[key].append(direct_probability - coverage_probability)
             distance = sum(abs(a - b) for a, b in zip(center, point)) // 2
             contest_hits.append((hits, -distance, key))
         best_hits, _, best_key = max(contest_hits)
@@ -1173,6 +1227,14 @@ def xyz_distribution_backtest(
             "stddev": round(statistics.pstdev(values), 6),
         }
         for key, values in hit_history.items()
+    }
+    direct_summaries = {
+        key: {
+            **_hit_summary(values),
+            "median": float(statistics.median(values)),
+            "stddev": round(statistics.pstdev(values), 6),
+        }
+        for key, values in direct_hit_history.items()
     }
     oracle = _hit_summary(oracle_hits)
     regrets = {
@@ -1194,6 +1256,27 @@ def xyz_distribution_backtest(
         "center": xyz_distribution_id(center), "radius": radius,
         "test_contests": len(oracle_hits), "no_future_information": True,
         "distributions": summaries,
+        "objective_comparison": {
+            key: {
+                "coverage": summaries[key],
+                "direct_p13": direct_summaries[key],
+                "delta_p13_plus_empirical": round(
+                    float(direct_summaries[key]["p13_plus_empirical"]) -
+                    float(summaries[key]["p13_plus_empirical"]), 8,
+                ),
+                "mean_modeled_p13_plus_gain": round(
+                    statistics.fmean(modeled_improvements[key]), 10,
+                ),
+                "coverage_model_p13_plus": round(statistics.fmean(
+                    modeled_probabilities[key]["coverage"]), 10),
+                "direct_model_p13_plus": round(statistics.fmean(
+                    modeled_probabilities[key]["direct_p13"]), 10),
+                "modeled_p13_never_worse": all(
+                    delta >= -1e-15 for delta in modeled_improvements[key]
+                ),
+            }
+            for key in summaries
+        },
         "regret_by_distribution": regrets,
         "retrospective_frozen_selection": oracle,
         "retrospective_frozen_selection_usage": oracle_usage,
@@ -1473,7 +1556,7 @@ def train(history_path: str, model_path: str,
     safe_diagnostics = distribution_backtest(contests)
     true_xyz = true_oracle_xyz(contests)
     model = {
-        "version": 16, "selected_policy": selected,
+        "version": 17, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
