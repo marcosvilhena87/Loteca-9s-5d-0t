@@ -771,8 +771,25 @@ def xyz_distribution_ticket(games: list[Match], distribution: tuple[int, int, in
     return _xyz_distribution_tickets(games, (distribution,))[distribution]
 
 
+def true_oracle_xyz_ticket(
+    games: list[Match], distribution: tuple[int, int, int], *, diagnostic_only: bool = False,
+) -> list[set[str]]:
+    """Maximize historical hits for one exact XYZ composition.
+
+    Access to outcomes must be explicitly acknowledged by callers.  Keeping
+    this entry point separate from :func:`xyz_distribution_ticket` prevents an
+    oracle ticket from being used accidentally by the prediction pipeline.
+    """
+    if not diagnostic_only:
+        raise ValueError("TrueOracleXYZ só pode ser usado com diagnostic_only=True")
+    return _xyz_distribution_tickets(
+        games, (distribution,), use_actual_results=True,
+    )[distribution][0]
+
+
 def _xyz_distribution_tickets(
     games: list[Match], distributions: tuple[tuple[int, int, int], ...] | list[tuple[int, int, int]],
+    *, use_actual_results: bool = False,
 ) -> dict[tuple[int, int, int], tuple[list[set[str]], list[str]]]:
     """Solve several XYZ compositions in one DP pass.
 
@@ -783,6 +800,8 @@ def _xyz_distribution_tickets(
     if len(games) != 14 or not distributions or any(
             not is_xyz_distribution_valid(*point) for point in distributions):
         raise ValueError("XYZ exige 14 jogos e distribuições viáveis")
+    if use_actual_results:
+        _ticket_hits(games, [{game.ranking[0]} for game in games])
     actions = ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2))
     limits = tuple(max(point[rank] for point in distributions) for rank in range(3))
     minimums = tuple(min(point[rank] for point in distributions) for rank in range(3))
@@ -798,8 +817,12 @@ def _xyz_distribution_tickets(
         forced_result = team_result(game, "FLAMENGO")
         forced_rank = game.ranking.index(forced_result) if forced_result else None
         updated = {}
-        action_coverages = tuple(sum(game.probabilities[game.ranking[rank]]
-                                     for rank in action) for action in actions)
+        action_coverages = tuple(
+            float(any(game.actual == game.ranking[rank] for rank in action))
+            if use_actual_results else
+            sum(game.probabilities[game.ranking[rank]] for rank in action)
+            for action in actions
+        )
         for (used_x, used_y, used_doubles), (score, path_code) in states.items():
             for action_index, action in enumerate(actions):
                 if forced_rank is not None and forced_rank not in action:
@@ -842,6 +865,64 @@ def _xyz_distribution_tickets(
                 notes.append(f"FLAMENGO jogo {game.jogo}: vitória {flamengo_win} coberta")
         solved[distribution] = ticket, notes
     return solved
+
+
+def true_oracle_xyz(
+    contests: dict[int, list[Match]],
+    center: tuple[int, int, int] = (9, 5, 5),
+    radius: int = 1,
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+) -> dict[str, object]:
+    """Measure the structural XYZ ceiling by optimizing directly for outcomes.
+
+    Unlike the frozen-ticket retrospective selection, this diagnostic rebuilds
+    every ticket with a 0/1 reward for whether each candidate action contains
+    the realized result.  Hard constraints remain inside the same XYZ DP.
+    """
+    contest_ids = sorted(contests)
+    if not 1 <= minimum_history < len(contest_ids):
+        raise ValueError("janela inicial inválida para TrueOracleXYZ")
+    distributions = generate_xyz_radius(center, radius)
+    hits_by_distribution = {xyz_distribution_id(point): [] for point in distributions}
+    best_hits: list[int] = []
+    usage = {key: 0 for key in hits_by_distribution}
+    for position in range(minimum_history, len(contest_ids)):
+        assert contest_ids[position - 1] < contest_ids[position]
+        games = contests[contest_ids[position]]
+        tickets = _xyz_distribution_tickets(
+            games, distributions, use_actual_results=True,
+        )
+        candidates = []
+        for point in distributions:
+            key = xyz_distribution_id(point)
+            hits = _ticket_hits(games, tickets[point][0])
+            hits_by_distribution[key].append(hits)
+            distance = sum(abs(a - b) for a, b in zip(center, point)) // 2
+            candidates.append((hits, -distance, key))
+        contest_best, _, selected = max(candidates)
+        best_hits.append(contest_best)
+        usage[selected] += 1
+    return {
+        "test_contests": len(best_hits),
+        "diagnostic_only": True,
+        "center": xyz_distribution_id(center),
+        "radius": radius,
+        "by_distribution": {
+            key: _hit_summary(values) for key, values in hits_by_distribution.items()
+        },
+        "overall": _hit_summary(best_hits),
+        "usage": usage,
+    }
+
+
+def true_oracle_xyz_by_distribution(
+    contests: dict[int, list[Match]],
+    center: tuple[int, int, int] = (9, 5, 5),
+    radius: int = 1,
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+) -> dict[str, dict[str, int | float]]:
+    """Return exact-distribution summaries from the structural XYZ oracle."""
+    return true_oracle_xyz(contests, center, radius, minimum_history)["by_distribution"]
 
 
 def _best_distribution_assignment(games: list[Match], top2_count: int,
@@ -1048,7 +1129,8 @@ def xyz_distribution_backtest(
         "test_contests": len(oracle_hits), "no_future_information": True,
         "distributions": summaries,
         "regret_by_distribution": regrets,
-        "oracle_xyz": oracle, "oracle_xyz_usage": oracle_usage,
+        "retrospective_frozen_selection": oracle,
+        "retrospective_frozen_selection_usage": oracle_usage,
         "xyz_vs_safe": {
             "best_safe": best_safe, "best_xyz": best_xyz,
             "delta_p13_plus": round(float(xyz_summary["p13_plus_empirical"]) -
@@ -1321,8 +1403,11 @@ def train(history_path: str, model_path: str,
     recovery = error_recovery_model(list(contests.values()))
     recovery_audit = walk_forward_second_mark(contests)
     nested_recovery = nested_walk_forward_second_mark(contests)
+    oracle_diagnostics = oracle_decomposition(contests, selected)
+    safe_diagnostics = distribution_backtest(contests)
+    true_xyz = true_oracle_xyz(contests)
     model = {
-        "version": 14, "selected_policy": selected,
+        "version": 15, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -1334,9 +1419,16 @@ def train(history_path: str, model_path: str,
         "rank_hit_rates": [round(count / sum(rank_hits), 6) for count in rank_hits],
         "probability_diagnostics": probability_diagnostics(contests),
         "allocator_diagnostics": allocator_diagnostics(contests),
-        "oracle_decomposition": oracle_decomposition(contests, selected),
-        "distribution_backtest": distribution_backtest(contests),
+        "oracle_decomposition": oracle_diagnostics,
+        "distribution_backtest": safe_diagnostics,
         "xyz_distribution_backtest": xyz_distribution_backtest(contests),
+        "true_oracle_xyz": {
+            **true_xyz,
+            "comparison": {
+                "oracle_distribution": safe_diagnostics["oracle_distribution"],
+                "oracle_full": oracle_diagnostics["full"],
+            },
+        },
         "top1_meta": top1_meta,
         "top1_reliability": {
             "walk_forward_disagreement": walk_forward_reliability(contests),

@@ -19,7 +19,8 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  generate_xyz_neighbors, generate_xyz_radius,
                                  is_xyz_distribution_valid, xyz_distribution_id,
                                  xyz_distribution_ticket, xyz_distribution_backtest,
-                                 oracle_distribution_ticket,
+                                 oracle_distribution_ticket, true_oracle_xyz,
+                                 true_oracle_xyz_ticket,
                                  walk_forward_top1_meta)
 
 
@@ -352,13 +353,39 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(result["diagnostic_only"])
         self.assertEqual(result["test_contests"], 1)
         self.assertEqual(len(result["distributions"]), 7)
-        self.assertEqual(sum(result["oracle_xyz_usage"].values()), 1)
+        self.assertEqual(sum(result["retrospective_frozen_selection_usage"].values()), 1)
         self.assertEqual(set(result["distributions"]),
                          set(result["regret_by_distribution"]))
-        self.assertGreaterEqual(result["oracle_xyz"]["mean"],
+        self.assertGreaterEqual(result["retrospective_frozen_selection"]["mean"],
                                 max(value["mean"] for value in
                                     result["distributions"].values()))
         self.assertIn(result["xyz_vs_safe"]["best_xyz"], result["distributions"])
+
+    def test_true_oracle_xyz_is_structural_upper_bound_and_preserves_constraints(self):
+        contests = {contest: [Match(contest, i + 1, "A", "B",
+                    {"1": .5, "X": .3, "2": .2}, "2" if i < 5 else "1")
+                    for i in range(14)] for contest in range(1, 4)}
+        distribution = (9, 5, 5)
+        probability_ticket, _ = xyz_distribution_ticket(contests[3], distribution)
+        with self.assertRaisesRegex(ValueError, "diagnostic_only"):
+            true_oracle_xyz_ticket(contests[3], distribution)
+        oracle_ticket = true_oracle_xyz_ticket(
+            contests[3], distribution, diagnostic_only=True,
+        )
+        self.assertEqual(sorted(map(len, oracle_ticket)), [1] * 9 + [2] * 5)
+        rank_counts = [sum(game.ranking[rank] in pick
+                           for game, pick in zip(contests[3], oracle_ticket))
+                       for rank in range(3)]
+        self.assertEqual(rank_counts, list(distribution))
+        self.assertGreaterEqual(sum(game.actual in pick for game, pick in
+                                    zip(contests[3], oracle_ticket)),
+                                sum(game.actual in pick for game, pick in
+                                    zip(contests[3], probability_ticket)))
+        diagnostic = true_oracle_xyz(contests, minimum_history=2)
+        self.assertTrue(diagnostic["diagnostic_only"])
+        self.assertEqual(sum(diagnostic["usage"].values()), 1)
+        self.assertGreaterEqual(diagnostic["overall"]["mean"],
+                                diagnostic["by_distribution"]["XYZ_09_05_05"]["mean"])
 
 
 if __name__ == "__main__":
