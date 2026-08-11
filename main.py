@@ -85,6 +85,16 @@ def main() -> None:
               f"P13+ {result['p13_plus_empirical']:.2%} | "
               f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f} | "
               f"mediana {result['median']:.1f} | desvio {result['stddev']:.4f}")
+    print("[XYZ OBJECTIVE COMPARISON]")
+    for name, result in xyz["objective_comparison"].items():
+        coverage = result["coverage"]
+        direct = result["direct_p13"]
+        print(f"  {name}: coverage P13+ {coverage['p13_plus_empirical']:.2%} | "
+              f"direct P13+ {direct['p13_plus_empirical']:.2%} | "
+              f"delta {result['delta_p13_plus_empirical']:+.2%} | "
+              f"modelo {result['coverage_model_p13_plus']:.6%} -> "
+              f"{result['direct_model_p13_plus']:.6%} | "
+              f"ganho {result['mean_modeled_p13_plus_gain']:+.6%}")
     comparison = xyz["xyz_vs_safe"]
     print(f"[XYZ VS SAFE] best_safe {comparison['best_safe']} | "
           f"best_xyz {comparison['best_xyz']} | "

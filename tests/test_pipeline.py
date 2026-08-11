@@ -335,6 +335,19 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("2", ticket[13])
         self.assertTrue(any("FLAMENGO" in note for note in notes))
 
+    def test_direct_xyz_optimizer_maximizes_ticket_level_p13(self):
+        games = [Match(1, i + 1, "A", "B", {
+            "1": .45 + i / 1000, "X": .35 - i / 2000, "2": .20 - i / 2000,
+        }) for i in range(14)]
+        coverage, _ = xyz_distribution_ticket(games, (9, 5, 5), "coverage")
+        direct, notes = xyz_distribution_ticket(games, (9, 5, 5), "direct_p13")
+        self.assertGreaterEqual(ticket_metrics_for(games, direct)["p13_plus"],
+                                ticket_metrics_for(games, coverage)["p13_plus"] - 1e-15)
+        self.assertEqual(sorted(map(len, direct)), [1] * 9 + [2] * 5)
+        self.assertIn("objetivo XYZ: direct_p13", notes)
+        with self.assertRaisesRegex(ValueError, "objetivo XYZ"):
+            xyz_distribution_ticket(games, (9, 5, 5), "unknown")
+
     def test_xyz_optimizer_rejects_invalid_or_constraint_infeasible_distribution(self):
         games = [Match(1, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1})
                  for i in range(14)]
@@ -361,6 +374,10 @@ class PipelineTests(unittest.TestCase):
                                 max(value["mean"] for value in
                                     result["distributions"].values()))
         self.assertIn(result["xyz_vs_safe"]["best_xyz"], result["distributions"])
+        self.assertEqual(set(result["objective_comparison"]),
+                         set(result["distributions"]))
+        self.assertTrue(all(value["modeled_p13_never_worse"]
+                            for value in result["objective_comparison"].values()))
 
     def test_true_oracle_xyz_is_structural_upper_bound_and_preserves_constraints(self):
         contests = {contest: [Match(contest, i + 1, "A", "B",
