@@ -768,47 +768,80 @@ def xyz_distribution_ticket(games: list[Match], distribution: tuple[int, int, in
     Flamengo's victory is filtered into every candidate state, rather than
     repaired afterwards (which could silently alter the requested XYZ totals).
     """
-    if len(games) != 14 or not is_xyz_distribution_valid(*distribution):
-        raise ValueError("XYZ exige 14 jogos e uma distribuição viável")
+    return _xyz_distribution_tickets(games, (distribution,))[distribution]
+
+
+def _xyz_distribution_tickets(
+    games: list[Match], distributions: tuple[tuple[int, int, int], ...] | list[tuple[int, int, int]],
+) -> dict[tuple[int, int, int], tuple[list[set[str]], list[str]]]:
+    """Solve several XYZ compositions in one DP pass.
+
+    Radius searches share almost all intermediate states. Solving the complete
+    requested frontier once makes end-to-end walk-forward telemetry practical
+    while producing the same deterministic ticket as an isolated solve.
+    """
+    if len(games) != 14 or not distributions or any(
+            not is_xyz_distribution_valid(*point) for point in distributions):
+        raise ValueError("XYZ exige 14 jogos e distribuições viáveis")
     actions = ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2))
-    target = distribution
-    # (T1, T2, T3, doubles) -> (score, action path)
-    states: dict[tuple[int, int, int, int], tuple[float, tuple[tuple[int, ...], ...]]] = {
-        (0, 0, 0, 0): (0.0, ())
-    }
-    for game in games:
+    limits = tuple(max(point[rank] for point in distributions) for rank in range(3))
+    minimums = tuple(min(point[rank] for point in distributions) for rank in range(3))
+    # A base-6 action code preserves deterministic lexicographic ties without
+    # repeatedly copying 14-element path tuples in every intermediate state.
+    # Z is derivable at layer i: Z = (i + doubles) - X - Y. Keeping only
+    # (X, Y, doubles) substantially reduces tuple allocation in the hot loop.
+    deltas = ((1, 0, 0), (0, 1, 0), (0, 0, 0),
+              (1, 1, 1), (1, 0, 1), (0, 1, 1))
+    states: dict[tuple[int, int, int], tuple[float, int]] = {(0, 0, 0): (0.0, 0)}
+    for game_index, game in enumerate(games):
+        remaining_games = 13 - game_index
         forced_result = team_result(game, "FLAMENGO")
         forced_rank = game.ranking.index(forced_result) if forced_result else None
         updated = {}
-        for counts, (score, path) in states.items():
-            for action in actions:
+        action_coverages = tuple(sum(game.probabilities[game.ranking[rank]]
+                                     for rank in action) for action in actions)
+        for (used_x, used_y, used_doubles), (score, path_code) in states.items():
+            for action_index, action in enumerate(actions):
                 if forced_rank is not None and forced_rank not in action:
                     continue
-                next_counts = tuple(counts[rank] + int(rank in action) for rank in range(3))
-                key = (*next_counts, counts[3] + (len(action) == 2))
-                if any(key[rank] > target[rank] for rank in range(3)) or key[3] > 5:
+                dx, dy, dd = deltas[action_index]
+                key = used_x + dx, used_y + dy, used_doubles + dd
+                next_z = game_index + 1 + key[2] - key[0] - key[1]
+                rank_counts = key[0], key[1], next_z
+                if any(rank_counts[rank] > limits[rank] for rank in range(3)) or key[2] > 5:
                     continue
-                coverage = sum(game.probabilities[game.ranking[rank]] for rank in action)
-                candidate = (score + coverage, path + (action,))
+                if key[2] + remaining_games < 5 or any(
+                        rank_counts[rank] + remaining_games < minimums[rank]
+                        for rank in range(3)):
+                    continue
+                candidate = (score + action_coverages[action_index],
+                             path_code * 6 + action_index)
                 if key not in updated or candidate[0] > updated[key][0] or (
                         candidate[0] == updated[key][0] and candidate[1] < updated[key][1]):
                     updated[key] = candidate
         states = updated
-    final = (*target, 5)
-    if final not in states:
-        raise ValueError("Hard Constraint do Flamengo torna a distribuição XYZ inviável")
-    ticket = [set(game.ranking[rank] for rank in action)
-              for game, action in zip(games, states[final][1])]
-    if sorted(map(len, ticket)) != [1] * 9 + [2] * 5 or sum(map(len, ticket)) != 19:
-        raise AssertionError("otimizador XYZ violou a estrutura 9/5/0")
-    notes = [f"XYZ solicitado/efetivo: {xyz_distribution_id(distribution)}"]
-    for game, pick in zip(games, ticket):
-        flamengo_win = team_result(game, "FLAMENGO")
-        if flamengo_win:
-            if flamengo_win not in pick:
-                raise AssertionError("otimizador XYZ não cobriu a vitória do Flamengo")
-            notes.append(f"FLAMENGO jogo {game.jogo}: vitória {flamengo_win} coberta")
-    return ticket, notes
+    solved = {}
+    for distribution in distributions:
+        final = (distribution[0], distribution[1], 5)
+        if final not in states:
+            raise ValueError("Hard Constraint do Flamengo torna a distribuição XYZ inviável")
+        path_code = states[final][1]
+        action_indexes = [0] * 14
+        for index in range(13, -1, -1):
+            path_code, action_indexes[index] = divmod(path_code, 6)
+        ticket = [set(game.ranking[rank] for rank in actions[action_index])
+                  for game, action_index in zip(games, action_indexes)]
+        if sorted(map(len, ticket)) != [1] * 9 + [2] * 5 or sum(map(len, ticket)) != 19:
+            raise AssertionError("otimizador XYZ violou a estrutura 9/5/0")
+        notes = [f"XYZ solicitado/efetivo: {xyz_distribution_id(distribution)}"]
+        for game, pick in zip(games, ticket):
+            flamengo_win = team_result(game, "FLAMENGO")
+            if flamengo_win:
+                if flamengo_win not in pick:
+                    raise AssertionError("otimizador XYZ não cobriu a vitória do Flamengo")
+                notes.append(f"FLAMENGO jogo {game.jogo}: vitória {flamengo_win} coberta")
+        solved[distribution] = ticket, notes
+    return solved
 
 
 def _best_distribution_assignment(games: list[Match], top2_count: int,
@@ -935,6 +968,96 @@ def distribution_backtest(contests: dict[int, list[Match]],
             oracle - selected for oracle, selected in
             zip(selected_oracle_hits, selected_distribution_hits)
         ]),
+        "diagnostic_only": True,
+    }
+
+
+def _distribution_selection_key(summary: dict[str, int | float],
+                                distance: int = 0) -> tuple[float, ...]:
+    """Apply the project's ticket-level objective with conservative ties."""
+    return (
+        float(summary["p13_plus_empirical"]), float(summary["14"]),
+        float(summary["13"]), float(summary["p12_plus_empirical"]),
+        float(summary["12"]), float(summary["mean"]),
+        -float(summary["stddev"]), -distance,
+    )
+
+
+def xyz_distribution_backtest(
+    contests: dict[int, list[Match]],
+    center: tuple[int, int, int] = (9, 5, 5),
+    radius: int = 1,
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+) -> dict[str, object]:
+    """Evaluate the controlled XYZ space without using outcomes to build tickets.
+
+    The oracle chooses only among already-frozen, probability-optimized XYZ
+    tickets for each contest. It is therefore explicitly retrospective and is
+    kept separate from the operational selection.
+    """
+    contest_ids = sorted(contests)
+    if not 1 <= minimum_history < len(contest_ids):
+        raise ValueError("janela inicial inválida para backtest XYZ")
+    distributions = generate_xyz_radius(center, radius)
+    hit_history = {xyz_distribution_id(point): [] for point in distributions}
+    oracle_hits: list[int] = []
+    oracle_usage = {key: 0 for key in hit_history}
+
+    for position in range(minimum_history, len(contest_ids)):
+        assert contest_ids[position - 1] < contest_ids[position]
+        games = contests[contest_ids[position]]
+        contest_hits: list[tuple[int, int, str]] = []
+        tickets = _xyz_distribution_tickets(games, distributions)
+        for point in distributions:
+            key = xyz_distribution_id(point)
+            ticket, _ = tickets[point]
+            hits = _ticket_hits(games, ticket)
+            hit_history[key].append(hits)
+            distance = sum(abs(a - b) for a, b in zip(center, point)) // 2
+            contest_hits.append((hits, -distance, key))
+        best_hits, _, best_key = max(contest_hits)
+        oracle_hits.append(best_hits)
+        oracle_usage[best_key] += 1
+
+    summaries = {
+        key: {
+            **_hit_summary(values),
+            "median": float(statistics.median(values)),
+            "stddev": round(statistics.pstdev(values), 6),
+        }
+        for key, values in hit_history.items()
+    }
+    oracle = _hit_summary(oracle_hits)
+    regrets = {
+        key: _regret_summary([best - fixed for best, fixed in zip(oracle_hits, values)])
+        for key, values in hit_history.items()
+    }
+    points_by_id = {xyz_distribution_id(point): point for point in distributions}
+    best_xyz = max(summaries, key=lambda key: _distribution_selection_key(
+        summaries[key], sum(abs(a - b) for a, b in zip(center, points_by_id[key])) // 2
+    ))
+
+    # SAFE is evaluated over exactly the same contests, allowing meaningful
+    # ticket-level deltas rather than comparisons between different samples.
+    safe = distribution_backtest(contests, minimum_history)
+    best_safe = max(safe["distributions"], key=lambda key:
+                    _distribution_selection_key(safe["distributions"][key]))
+    xyz_summary, safe_summary = summaries[best_xyz], safe["distributions"][best_safe]
+    return {
+        "center": xyz_distribution_id(center), "radius": radius,
+        "test_contests": len(oracle_hits), "no_future_information": True,
+        "distributions": summaries,
+        "regret_by_distribution": regrets,
+        "oracle_xyz": oracle, "oracle_xyz_usage": oracle_usage,
+        "xyz_vs_safe": {
+            "best_safe": best_safe, "best_xyz": best_xyz,
+            "delta_p13_plus": round(float(xyz_summary["p13_plus_empirical"]) -
+                                    float(safe_summary["p13_plus_empirical"]), 8),
+            "delta_p12_plus": round(float(xyz_summary["p12_plus_empirical"]) -
+                                    float(safe_summary["p12_plus_empirical"]), 8),
+            "delta_mean": round(float(xyz_summary["mean"]) -
+                                float(safe_summary["mean"]), 6),
+        },
         "diagnostic_only": True,
     }
 
@@ -1199,7 +1322,7 @@ def train(history_path: str, model_path: str,
     recovery_audit = walk_forward_second_mark(contests)
     nested_recovery = nested_walk_forward_second_mark(contests)
     model = {
-        "version": 13, "selected_policy": selected,
+        "version": 14, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -1213,6 +1336,7 @@ def train(history_path: str, model_path: str,
         "allocator_diagnostics": allocator_diagnostics(contests),
         "oracle_decomposition": oracle_decomposition(contests, selected),
         "distribution_backtest": distribution_backtest(contests),
+        "xyz_distribution_backtest": xyz_distribution_backtest(contests),
         "top1_meta": top1_meta,
         "top1_reliability": {
             "walk_forward_disagreement": walk_forward_reliability(contests),

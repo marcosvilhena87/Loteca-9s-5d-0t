@@ -469,26 +469,32 @@ Hard Constraint do Flamengo
 rejeição de distribuição inviável
 ```
 
-## O que ainda falta
+## Integração end-to-end
 
-O núcleo existe, mas XYZ ainda não está integrado end-to-end à execução principal de:
+O núcleo XYZ está integrado à execução principal de:
 
 ```powershell
 python main.py
 ```
 
-Ainda faltam:
+`main.py` agora registra:
 
 ```text
-XYZDistributionBacktest
-OracleXYZ
-OracleXYZ Usage
+XYZDistributionBacktest (raio 1)
+OracleXYZ e Usage
+regret por distribuição
 XYZ vs SAFE
-pairwise XYZ
-bootstrap XYZ
-NestedXYZDistributionSelector
-telemetria em main.py
+telemetria completa em main.py
 ```
+
+Nos 418 concursos fora da amostra, o melhor candidato fixo do raio 1 foi
+`9/6/4` (`P13+ 0.72%`, `P12+ 3.35%`, média `8.2608`). O benchmark seguro
+`14/0/5` permaneceu superior, com deltas XYZ de `-0.96 p.p.` em P13+,
+`-1.91 p.p.` em P12+ e `-0.4234` acerto médio. O OracleXYZ limitado às sete
+distribuições atingiu `P13+ 0.96%`, `P12+ 7.18%` e média `8.9785`.
+
+Portanto, XYZ **não foi promovido** ao ticket operacional. Ainda faltam pairwise,
+bootstrap e seleção nested antes de qualquer reconsideração prospectiva.
 
 ---
 
@@ -1083,13 +1089,13 @@ python -m unittest discover -v
 
 ## Fase 1 — XYZ end-to-end
 
-1. [ ] implementar `XYZDistributionBacktest` para `9/5/5 ± raio 1`;
-2. [ ] imprimir `[XYZ DISTRIBUTION BACKTEST]` em `main.py`;
-3. [ ] comparar `best_safe × best_xyz`;
-4. [ ] implementar `OracleXYZ`;
-5. [ ] imprimir `OracleXYZ Usage`;
-6. [ ] implementar regret por distribuição XYZ;
-7. [ ] adicionar testes end-to-end XYZ sem leakage.
+1. [x] implementar `XYZDistributionBacktest` para `9/5/5 ± raio 1`;
+2. [x] imprimir `[XYZ DISTRIBUTION BACKTEST]` em `main.py`;
+3. [x] comparar `best_safe × best_xyz`;
+4. [x] implementar `OracleXYZ`;
+5. [x] imprimir `OracleXYZ Usage`;
+6. [x] implementar regret por distribuição XYZ;
+7. [x] adicionar testes end-to-end XYZ sem leakage.
 
 ## Fase 2 — significância e robustez
 
