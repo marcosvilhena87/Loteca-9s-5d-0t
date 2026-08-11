@@ -547,14 +547,17 @@ Telemetria:
 
 ```text
 [ACTUAL RANK PROFILE]
-mean_top1:
-mean_top2:
-mean_top3:
-median_top1:
-median_top2:
-median_top3:
-most_common_profiles:
+mean_top1:   7.201
+mean_top2:   3.763
+mean_top3:   3.036
+median_top1: 7
+median_top2: 4
+median_top3: 3
+most_common_profile: 7/4/3 (31 de 418 concursos)
 ```
+
+O modelo também registra a frequência dos dez perfis mais comuns e, para cada
+distribuição do raio XYZ, a distância L1 média e a taxa de coincidência exata.
 
 Objetivos:
 
@@ -577,9 +580,13 @@ Telemetria:
 
 ```text
 [XYZ ORACLE FEASIBILITY]
-XYZ_09_05_05: feasible14 ... | feasible13+ ...
-XYZ_10_05_04: ...
-...
+XYZ_09_05_05: feasible14 61.72% | feasible13+ 88.04%
+XYZ_10_05_04: feasible14 60.77% | feasible13+ 84.69%
+XYZ_10_04_05: feasible14 55.02% | feasible13+ 81.10%
+XYZ_09_06_04: feasible14 61.24% | feasible13+ 85.65%
+XYZ_09_04_06: feasible14 52.15% | feasible13+ 77.99%
+XYZ_08_06_05: feasible14 58.85% | feasible13+ 83.01%
+XYZ_08_05_06: feasible14 54.78% | feasible13+ 79.67%
 ```
 
 Essa análise separa:
@@ -1099,8 +1106,8 @@ python -m unittest discover -v
 
 ## Fase 1 — explicar o teto estrutural
 
-1. [ ] Actual Rank Profile;
-2. [ ] Oracle Feasibility por distribuição;
+1. [x] Actual Rank Profile;
+2. [x] Oracle Feasibility por distribuição;
 3. [ ] Structural Gap / Oracle Capture baseado em média de acertos;
 4. [ ] distribuição histórica dos perfis Top1/Top2/Top3.
 
