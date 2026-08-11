@@ -72,7 +72,7 @@ Ordem de comparação:
 7. estabilidade
 ```
 
-Accuracy, média, Brier, Log Loss, ECE e win rates individuais são diagnósticos. Uma estratégia só pode substituir o baseline quando melhorar o **ticket fora da amostra**.
+Accuracy, média, Brier, Log Loss, ECE, regret e win rates individuais são diagnósticos. Uma estratégia só pode substituir o baseline quando melhorar o **ticket fora da amostra**.
 
 ---
 
@@ -111,7 +111,7 @@ A regra do Palmeiras nunca pode violar Hard Constraints nem substituir uma solu�
 
 ---
 
-# Baseline atual
+# Baseline operacional
 
 Arquitetura:
 
@@ -129,7 +129,7 @@ Hard Constraints
 Ticket
 ```
 
-Políticas atuais de allocator:
+Políticas atuais:
 
 ```text
 gain
@@ -151,16 +151,14 @@ margin                   = 1 - (p(Top1) - p(Top2))
 ratio                    = p(Top2) / p(Top1)
 ```
 
-`gain` e `top2_probability` são equivalentes no baseline atual.
-
-A estratégia operacional permanece:
+Estratégia operacional atual:
 
 ```text
 allocator: uncertainty
 second mark: top2_baseline
 ```
 
-Isso não significa dominância estatística robusta; significa apenas que nenhuma alternativa demonstrou ganho prospectivo suficiente em **P13+** para substituir o baseline.
+Nenhuma alternativa demonstrou ganho prospectivo suficiente em **P13+** para substituir esse baseline.
 
 ---
 
@@ -210,9 +208,7 @@ Leitura:
 
 ---
 
-# Calibração e qualidade probabilística
-
-Resultado atual:
+# Calibração e correções do Top1
 
 ```text
 Brier multiclass: 0.588667
@@ -220,13 +216,7 @@ Log Loss:         0.985938
 ECE:              0.012009
 ```
 
-Essas métricas continuam sendo diagnósticas. Uma melhoria de calibração só interessa operacionalmente se melhorar **P13+ do ticket fora da amostra**.
-
----
-
-# Correções do Top1
-
-Resultados atuais de disagreement:
+Disagreement:
 
 ```text
 top1_residual:    48.40%
@@ -244,13 +234,11 @@ Brier meta:     0.240623
 
 Conclusão:
 
-> As correções de Top1 permanecem como benchmarks/telemetria e não alteram o ticket final. O meta-modelo atual piora o Brier e perde para o baseline nos disagreements informativos.
+> As correções de Top1 permanecem como telemetria. O meta-modelo atual piora o Brier e não deve alterar o ticket final.
 
 ---
 
 # SecondMarkSelector / Recovery
-
-Resultado atual:
 
 ```text
 [SECOND-MARK DISAGREEMENT]
@@ -276,21 +264,19 @@ delta P12+: +2.63 p.p.
 
 Conclusão:
 
-> O recovery melhora métricas secundárias, especialmente P12+, mas piora P13+. `top2_baseline` permanece ativo.
+> O recovery melhora métricas secundárias, mas piora P13+. `top2_baseline` permanece ativo.
 
-Esse resultado é um princípio metodológico importante do projeto:
+Princípio metodológico:
 
 > Melhorar uma métrica intermediária não significa melhorar o objetivo final do ticket.
 
 ---
 
-# Oracle Decomposition — implementado
+# Oracle Decomposition
 
 Os oráculos usam resultado real **somente para diagnóstico retrospectivo**.
 
 ```text
-[ORACLE DECOMPOSITION]
-
 baseline
 P13+:  1.44% | P12+:  5.98% | média  8.7081
 
@@ -307,40 +293,20 @@ P13+: 41.63% | P12+: 64.59% | média 12.0144
 Regret:
 
 ```text
-[REGRET ALLOCATOR]
-média 2.0048 | zero 8.85% | 2+ 67.46% | máximo 5
-
-[REGRET SELECTOR]
-média 1.4713 | zero 17.94% | 2+ 44.50% | máximo 4
-
-[REGRET FULL]
-média 3.3062 | zero 0.96% | 2+ 95.45% | máximo 5
+allocator: média 2.0048 | zero 8.85% | 2+ 67.46% | máximo 5
+selector:  média 1.4713 | zero 17.94% | 2+ 44.50% | máximo 4
+full:      média 3.3062 | zero 0.96% | 2+ 95.45% | máximo 5
 ```
 
 Principal leitura:
 
 > O maior espaço de melhoria está na **estrutura das cinco marcações extras**: onde colocá-las e qual rank usar como proteção.
 
-O OracleAllocator sozinho leva P13+ de aproximadamente `1.44%` para `11.00%`, evidenciando que a alocação das proteções é um gargalo estrutural.
-
 ---
 
-# DistributionBacktest seguro — implementado
+# DistributionBacktest seguro
 
-Nesse espaço, Top1 permanece nos 14 jogos e as cinco marcas extras são distribuídas entre Top2 e Top3.
-
-Distribuições:
-
-```text
-14/5/0
-14/4/1
-14/3/2
-14/2/3
-14/1/4
-14/0/5
-```
-
-Resultado atual:
+Nesse espaço, Top1 permanece nos 14 jogos.
 
 ```text
 14/5/0: P13+ 1.44% | P12+ 5.50% | média 8.7297
@@ -359,13 +325,11 @@ melhor P12+: 14/3/2
 melhor média: 14/2/3
 ```
 
-`14/0/5` é interessante por aumentar a cauda de P13+, mas o número absoluto de eventos 13+ ainda é pequeno. A diferença não justifica promoção sem validação nested e bootstrap pareado.
+`14/0/5` é interessante por aumentar a cauda de 13+, mas o número absoluto de eventos ainda é pequeno. **Não promover sem NestedDistributionSelector e bootstrap pareado.**
 
 ---
 
-# OracleDistribution — implementado
-
-Resultado atual:
+# OracleDistribution
 
 ```text
 P13+: 41.39%
@@ -385,52 +349,42 @@ Diferença:
 0.24 p.p.
 ```
 
-Leitura principal:
+Leitura:
 
-> Quase todo o teto do OracleFull pode ser reproduzido escolhendo corretamente **quantos Top2/Top3 usar e em quais jogos colocar as cinco marcas extras**.
+> Quase todo o teto do OracleFull pode ser reproduzido escolhendo corretamente quantos Top2/Top3 usar e em quais jogos colocar as cinco marcas extras, **sem remover Top1 dos 14 jogos**.
 
-Essa é a principal justificativa para a linha de pesquisa XYZ.
+Esse resultado aumenta a prioridade do espaço SAFE e da otimização conjunta das cinco proteções.
 
 ---
 
-# NestedDistributionSelector — pendente
+# XYZ — núcleo implementado
 
-Fluxo obrigatório:
+Definição:
 
 ```text
-histórico até N
-      ↓
-comparar distribuições somente no passado
-      ↓
-selecionar
-      ↓
-congelar
-      ↓
-aplicar no concurso N+1
-      ↓
-registrar
-      ↓
-repetir
+X = total de marcações Top1
+Y = total de marcações Top2
+Z = total de marcações Top3
+X + Y + Z = 19
 ```
 
-Somente o resultado nested pode promover uma distribuição segura diferente do baseline atual.
+Centro inicial:
 
----
+```text
+9/5/5
+```
 
-# XYZ — estado atual
-
-## O núcleo XYZ já está implementado
-
-O código atual já possui:
+O código já possui:
 
 ```text
 is_xyz_distribution_valid()
 generate_xyz_neighbors()
 generate_xyz_radius()
 xyz_distribution_ticket()
+xyz_distribution_backtest()
 ```
 
-O `xyz_distribution_ticket()` usa **Programação Dinâmica** para testar, por jogo:
+O DP testa:
 
 ```text
 T1
@@ -441,469 +395,336 @@ T1T3
 T2T3
 ```
 
-Estado conceitual:
-
-```text
-(used_T1, used_T2, used_T3, used_doubles)
-```
-
-Objetivo final:
-
-```text
-used_T1 = X
-used_T2 = Y
-used_T3 = Z
-used_doubles = 5
-```
-
-A Hard Constraint do Flamengo é aplicada **durante a geração dos estados**, e não por correção posterior. Assim, uma distribuição XYZ inviável é rejeitada em vez de ser silenciosamente alterada.
-
-Também já existem testes automatizados para:
-
-```text
-vizinhança única e válida
-transferência unitária entre X/Y/Z
-preservação exata de X/Y/Z
-9 secos / 5 duplos / 19 marcações
-Hard Constraint do Flamengo
-rejeição de distribuição inviável
-```
-
-## Integração end-to-end
-
-O núcleo XYZ está integrado à execução principal de:
-
-```powershell
-python main.py
-```
-
-`main.py` agora registra:
-
-```text
-XYZDistributionBacktest (raio 1)
-OracleXYZ e Usage
-regret por distribuição
-XYZ vs SAFE
-telemetria completa em main.py
-```
-
-Nos 418 concursos fora da amostra, o melhor candidato fixo do raio 1 foi
-`9/6/4` (`P13+ 0.72%`, `P12+ 3.35%`, média `8.2608`). O benchmark seguro
-`14/0/5` permaneceu superior, com deltas XYZ de `-0.96 p.p.` em P13+,
-`-1.91 p.p.` em P12+ e `-0.4234` acerto médio. O OracleXYZ limitado às sete
-distribuições atingiu `P13+ 0.96%`, `P12+ 7.18%` e média `8.9785`.
-
-Portanto, XYZ **não foi promovido** ao ticket operacional. Ainda faltam pairwise,
-bootstrap e seleção nested antes de qualquer reconsideração prospectiva.
-
----
-
-# Definição XYZ
-
-```text
-X = total de marcações Top1
-Y = total de marcações Top2
-Z = total de marcações Top3
-
-X + Y + Z = 19
-```
-
-Centro inicial:
-
-```text
-9/5/5
-```
-
-Diferentemente do espaço seguro `14/x/y`, o espaço XYZ pode remover Top1 de alguns jogos.
-
-Sempre:
+Sempre preservando:
 
 ```text
 9 secos
 5 duplos
 0 triplos
 19 marcações
+Hard Constraint do Flamengo
 ```
+
+A constraint do Flamengo é aplicada **dentro do DP**, nunca por correção silenciosa posterior.
 
 ---
 
-# Vizinhança ±1 de 9/5/5
+# XYZ raio 1 — resultado atual
 
-Raio 0:
+Distribuições testadas:
 
 ```text
 9/5/5
-```
-
-Raio 1:
-
-```text
-10/4/5
 10/5/4
-8/6/5
-8/5/6
+10/4/5
 9/6/4
 9/4/6
-```
-
-Cada vizinho resulta de uma única transferência de uma marcação entre duas colunas.
-
-Gerador:
-
-```text
-(X+1,Y-1,Z)
-(X+1,Y,Z-1)
-(X-1,Y+1,Z)
-(X,Y+1,Z-1)
-(X-1,Y,Z+1)
-(X,Y-1,Z+1)
-```
-
-Regras:
-
-```text
-X >= 0
-Y >= 0
-Z >= 0
-X + Y + Z = 19
-sem duplicatas
-viável com 9 secos / 5 duplos
-```
-
----
-
-# Prioridade 1 — XYZDistributionBacktest
-
-Primeiro experimento XYZ end-to-end:
-
-```text
-9/5/5
-10/4/5
-10/5/4
 8/6/5
 8/5/6
-9/6/4
-9/4/6
 ```
 
-Telemetria esperada:
+Resultado:
 
 ```text
-[XYZ DISTRIBUTION BACKTEST]
-
-X/Y/Z      14   13   12    P13+     P12+     mean
-9/5/5       ...  ...  ...     ...       ...      ...
-10/4/5      ...  ...  ...     ...       ...      ...
-10/5/4      ...  ...  ...     ...       ...      ...
-8/6/5       ...  ...  ...     ...       ...      ...
-8/5/6       ...  ...  ...     ...       ...      ...
-9/6/4       ...  ...  ...     ...       ...      ...
-9/4/6       ...  ...  ...     ...       ...      ...
+XYZ_09_05_05: P13+ 0.48% | P12+ 3.59% | média 8.2153
+XYZ_10_05_04: P13+ 0.24% | P12+ 5.02% | média 8.4354
+XYZ_10_04_05: P13+ 0.24% | P12+ 3.59% | média 8.3206
+XYZ_09_06_04: P13+ 0.72% | P12+ 3.35% | média 8.2608
+XYZ_09_04_06: P13+ 0.48% | P12+ 2.87% | média 8.1364
+XYZ_08_06_05: P13+ 0.48% | P12+ 2.63% | média 8.0478
+XYZ_08_05_06: P13+ 0.48% | P12+ 1.44% | média 7.9856
 ```
 
-Adicionar também:
+Comparação:
 
 ```text
-median
-stddev
-regret
+best_safe: 14/0/5
+best_xyz:  XYZ_09_06_04
+
+delta P13+: -0.96 p.p.
+delta P12+: -1.91 p.p.
+delta média: -0.4234
 ```
 
-Pergunta principal:
+Conclusão operacional:
 
-> Remover alguns Top1 e redistribuir as 19 marcações melhora P13+ fora da amostra?
+> **O XYZ raio 1, usando a função objetivo atual de soma de cobertura probabilística, perdeu claramente para o espaço SAFE.**
+
+XYZ não deve ser promovido nem expandido para raio 2 neste momento.
 
 ---
 
-# Prioridade 2 — XYZ vs SAFE
+# Importante — o “OracleXYZ” atual não é um oracle estrutural
 
-Comparar o melhor XYZ com os benchmarks seguros no mesmo conjunto de concursos.
-
-```text
-[XYZ VS SAFE]
-best_safe:
-best_xyz:
-delta P13+:
-delta P12+:
-delta mean:
-```
-
-Benchmarks mínimos:
+A execução atual mostra:
 
 ```text
-14/5/0
-14/0/5
-9/5/5
+[ORACLE XYZ]
+P13+: 0.96%
+P12+: 7.18%
+média: 8.9785
 ```
+
+Uso:
+
+```text
+XYZ_09_05_05: 116
+XYZ_10_05_04: 169
+XYZ_10_04_05: 20
+XYZ_09_06_04: 50
+XYZ_09_04_06: 30
+XYZ_08_06_05: 18
+XYZ_08_05_06: 15
+```
+
+Porém, metodologicamente esse número **não é comparável diretamente** ao OracleDistribution ou OracleFull.
+
+O fluxo atual é:
+
+```text
+probabilidades pré-jogo
+      ↓
+gerar um ticket otimizado para cada XYZ
+      ↓
+congelar esses tickets
+      ↓
+usar o resultado real apenas para escolher retrospectivamente
+qual dos sete tickets congelados acertou mais
+```
+
+Portanto, o nome conceitualmente mais correto é:
+
+```text
+XYZ Retrospective Frozen Selection
+```
+
+ou:
+
+```text
+XYZ Best Frozen Ticket
+```
+
+O número `0.96%` mede o benefício de escolher retrospectivamente entre sete tickets já congelados — **não o teto estrutural do espaço XYZ**.
 
 ---
 
-# Prioridade 3 — OracleXYZ
+# Prioridade 1 — TrueOracleXYZ
 
-Para cada concurso, usando o resultado real apenas como diagnóstico retrospectivo:
+Implementar um verdadeiro oracle estrutural XYZ.
+
+Para cada jogo, usando o resultado real apenas no diagnóstico:
 
 ```text
-qual distribuição XYZ permitida teria produzido mais acertos?
+T1   = 1 se Top1 contém o resultado real
+T2   = 1 se Top2 contém o resultado real
+T3   = 1 se Top3 contém o resultado real
+T1T2 = 1 se o resultado está em {Top1, Top2}
+T1T3 = 1 se o resultado está em {Top1, Top3}
+T2T3 = 1 se o resultado está em {Top2, Top3}
+```
+
+Objetivo do DP retrospectivo:
+
+```text
+maximizar número de acertos
+```
+
+sujeito a:
+
+```text
+X Top1
+Y Top2
+Z Top3
+9 secos
+5 duplos
+19 marcações
+Hard Constraint do Flamengo
+```
+
+Funções sugeridas:
+
+```text
+true_oracle_xyz_ticket(...)
+true_oracle_xyz_by_distribution(...)
+true_oracle_xyz(...)
 ```
 
 Telemetria:
 
 ```text
-[ORACLE XYZ]
+[TRUE ORACLE XYZ BY DISTRIBUTION]
+XYZ_09_05_05 ...
+XYZ_10_05_04 ...
+...
+
+[TRUE ORACLE XYZ]
 P13+:
 P12+:
 mean:
-
-[ORACLE XYZ USAGE]
-9/5/5: ...
-10/4/5: ...
-10/5/4: ...
-8/6/5: ...
-8/5/6: ...
-9/6/4: ...
-9/4/6: ...
+usage:
 ```
 
-Comparar obrigatoriamente com:
+Comparar:
 
 ```text
-OracleDistribution P13+: 41.39%
-OracleFull P13+:         41.63%
+OracleDistribution
+TrueOracleXYZ
+OracleFull
 ```
 
-Objetivo:
+Pergunta decisiva:
 
-> Medir quanto do teto estrutural é capturado pelo espaço XYZ de raio controlado.
+> O fracasso operacional do XYZ vem do próprio espaço X/Y/Z ou da maneira como o otimizador atual escolhe as marcações dentro desse espaço?
 
-Se `OracleXYZ` ficar muito abaixo do OracleDistribution/OracleFull, ampliar o espaço XYZ terá baixo valor marginal. Se ficar próximo, a seleção de distribuição torna-se um alvo central do projeto.
+Regra de decisão:
+
+```text
+Se TrueOracleXYZ <= OracleDistribution:
+    reduzir drasticamente a prioridade do XYZ
+
+Se TrueOracleXYZ > OracleDistribution:
+    existe headroom estrutural e vale investigar um otimizador XYZ melhor
+```
 
 ---
 
-# Regret por distribuição XYZ
+# Prioridade 2 — NestedDistributionSelector SAFE
 
-Para cada distribuição fixa, registrar:
-
-```text
-regret médio
-regret mediano
-regret = 0
-regret = 1
-regret >= 2
-regret máximo
-```
-
-Isso permite identificar distribuições robustas que permanecem próximas do oracle mesmo quando não lideram P13+ bruto.
-
----
-
-# Pairwise e bootstrap
-
-## Pairwise contest-by-contest
-
-Comparar cada candidato com benchmarks seguros:
+Antes de construir um NestedXYZ, validar prospectivamente as seis distribuições seguras:
 
 ```text
-wins
-ties
-losses
-delta médio de acertos
-P13+ wins/ties/losses
-P12+ wins/ties/losses
+14/5/0
+14/4/1
+14/3/2
+14/2/3
+14/1/4
+14/0/5
 ```
-
-## Bootstrap pareado
-
-A unidade de reamostragem deve ser o **concurso inteiro**, nunca partidas individuais.
-
-Registrar:
-
-```text
-delta P13+
-delta P12+
-delta mean
-IC95%
-```
-
-Motivo:
-
-> Com aproximadamente 418 concursos e poucos eventos 13+, diferenças aparentemente relevantes podem representar apenas um ou dois concursos.
-
----
-
-# NestedXYZDistributionSelector
 
 Fluxo:
 
 ```text
 histórico até N
       ↓
-gerar espaço XYZ permitido
-      ↓
 comparar apenas no passado
       ↓
-selecionar X/Y/Z
+selecionar distribuição SAFE
       ↓
 congelar
       ↓
-aplicar no N+1
+aplicar em N+1
       ↓
 registrar
 ```
 
-Somente o nested pode promover XYZ para o ticket final.
-
-Critério sugerido de seleção:
-
-```text
-1. P13+
-2. número de 14
-3. número de 13
-4. P12+
-5. média
-6. menor variância
-7. menor distância de 9/5/5
-```
-
-Empates devem ser resolvidos de forma conservadora para reduzir seleção por ruído.
+Somente o nested pode promover `14/0/5` ou qualquer outra distribuição segura.
 
 ---
 
-# Regularização do seletor XYZ
+# Prioridade 3 — Pairwise e bootstrap SAFE
 
-Como P13+ é um evento raro, não usar frequência bruta de maneira ingênua para selecionar distribuições.
-
-Experimentar:
+Comparações mínimas:
 
 ```text
-Beta-Binomial
-shrinkage em direção ao baseline
-mínimo de evidência
-penalização por complexidade/distância do centro
+14/0/5 vs 14/5/0
+14/0/5 vs uncertainty operacional
+14/3/2 vs 14/5/0
 ```
 
-Objetivo:
+Pairwise tail-aware:
 
-> Evitar que um único concurso de 13 pontos provoque mudança artificial de distribuição.
+```text
+wins / ties / losses de acertos
+delta médio
+13+ exclusivo A
+13+ em ambos
+13+ exclusivo B
+12+ exclusivo A
+12+ em ambos
+12+ exclusivo B
+```
+
+Bootstrap pareado:
+
+```text
+unidade de reamostragem = concurso inteiro
+
+delta P13+
+delta P12+
+delta média
+IC95%
+```
+
+Com poucos eventos 13+, diferenças como `1.67% vs 1.44%` podem representar apenas um concurso.
 
 ---
 
-# Stability / Churn
+# Prioridade 4 — ExactXYZP13Optimizer
 
-Telemetria futura:
+Somente se o TrueOracleXYZ mostrar headroom estrutural relevante.
 
-```text
-[XYZ SELECTION STABILITY]
-changes:
-mean_run_length:
-most_used_distribution:
-distribution_usage:
-```
-
-Se o seletor mudar de distribuição quase todo concurso, isso pode indicar ruído. Regimes persistentes são mais interessantes e mais plausíveis de generalizar.
-
----
-
-# Busca em raios
-
-Não abrir todo o espaço XYZ de uma vez.
+O DP XYZ atual maximiza:
 
 ```text
-raio 0 → 9/5/5
-raio 1 → seis vizinhos unitários
-raio 2 → somente se raio 1 mostrar sinal nested
-raio 3+ → somente com evidência adicional
+soma das probabilidades cobertas
 ```
 
-Isso reduz `winner's curse` e overfitting por busca excessiva.
+Isso está mais próximo de maximizar expectativa de acertos do que a função objetivo real.
 
----
-
-# Próxima fronteira — otimizar diretamente P(>=13)
-
-O DP XYZ atual maximiza a **soma das probabilidades cobertas** pelas escolhas.
-
-Isso é um bom baseline, mas está mais próximo de maximizar expectativa de acertos do que de maximizar diretamente P13+.
-
-Dois tickets podem apresentar:
-
-```text
-Ticket A
-E[acertos] = 9.1
-P13+       = 0.35%
-
-Ticket B
-E[acertos] = 8.9
-P13+       = 0.48%
-```
-
-Para este projeto, o Ticket B é superior.
-
-Implementação futura sugerida:
-
-```text
-ExactXYZP13Optimizer
-```
-
-Objetivo:
+Novo objetivo:
 
 ```text
 max P(>=13)
 = max [P(14) + P(13)]
 ```
 
-A probabilidade do ticket pode ser calculada pela distribuição Poisson-binomial das probabilidades de acerto dos 14 jogos.
+Para um ticket candidato:
 
-Essa etapa deve ser realizada **depois** da validação estrutural XYZ, para evitar aumentar simultaneamente o espaço de busca e a complexidade do otimizador.
+```text
+q_i = soma das probabilidades dos resultados marcados no jogo i
+```
+
+A distribuição de acertos pode ser calculada exatamente pela Poisson-binomial.
+
+Comparar:
+
+```text
+coverage_sum
+vs
+direct_P13_optimizer
+```
+
+Nenhum ganho pode ser promovido sem nested walk-forward.
 
 ---
 
-# Top1-only e valor das cinco marcas extras
+# Prioridade 5 — JointMarkAllocator
 
-Implementações futuras:
+A arquitetura atual separa:
 
 ```text
-Top1-only baseline
-Extra Mark Efficiency
-Oracle Capture Rate
-Recovery Profile
+qual jogo recebe duplo?
++
+qual segunda marca recebe?
 ```
 
-Fórmulas:
+Mas a decisão real pode ser tratada conjuntamente.
+
+Oportunidades:
 
 ```text
-extra_mark_efficiency = (hits_ticket - hits_top1_only) / 5
-```
-
-```text
-oracle_capture_rate =
-    (hits_policy - hits_top1_only)
-    /
-    (hits_oracle_full - hits_top1_only)
-```
-
-Essas métricas ajudam a medir quanto valor cada arquitetura extrai das cinco marcações adicionais.
-
----
-
-# JointMarkAllocator
-
-Experimento paralelo à arquitetura `DoubleAllocator → SecondMarkSelector`.
-
-Para cada jogo:
-
-```text
-T1T2 → score_T2
-T1T3 → score_T3
-```
-
-Baseline inicial:
-
-```text
-score_T2 = pTop2
-score_T3 = pTop3
+(game_i, Top2)
+(game_i, Top3)
 ```
 
 Selecionar exatamente cinco oportunidades, no máximo uma por jogo.
+
+Baseline:
+
+```text
+score(game, Top2) = pTop2
+score(game, Top3) = pTop3
+```
 
 Nome inicial:
 
@@ -911,7 +732,7 @@ Nome inicial:
 joint_probability
 ```
 
-Essa linha deve ficar atrás de XYZ no roadmap enquanto o espaço estrutural ainda não estiver totalmente diagnosticado.
+Essa linha ganha prioridade porque o OracleDistribution está praticamente empatado com o OracleFull sem precisar remover Top1.
 
 ---
 
@@ -921,6 +742,12 @@ Dataset futuro:
 
 ```text
 output/opportunity_dataset.csv
+```
+
+Uma linha por:
+
+```text
+concurso × jogo × marca candidata
 ```
 
 Features candidatas:
@@ -938,21 +765,99 @@ posição
 perfil do concurso
 ```
 
-Targets:
+Target principal:
 
 ```text
-extra_gain_top2
-extra_gain_top3
+extra_mark_hit
 ```
 
-Saídas futuras:
+onde:
 
 ```text
-score_T2 ≈ P(extra_gain_top2 = 1 | contexto)
-score_T3 ≈ P(extra_gain_top3 = 1 | contexto)
+extra_mark_hit = 1
 ```
 
-Qualquer modelo aprendido deve ser avaliado em nested walk-forward e comparado no nível do ticket.
+se aquela marca adicional recuperaria um erro do Top1.
+
+Modelo futuro:
+
+```text
+P(extra_mark_hit | contexto)
+```
+
+Avaliação obrigatória em nested walk-forward e no nível do ticket.
+
+---
+
+# Oracle Capture Rate
+
+Para medir quanto potencial uma arquitetura consegue extrair:
+
+```text
+oracle_capture_rate =
+    (hits_policy - hits_baseline)
+    /
+    (hits_oracle - hits_baseline)
+```
+
+Para XYZ, usar **TrueOracleXYZ**, nunca o Frozen Selection atual.
+
+---
+
+# Robustez temporal
+
+Implementações futuras:
+
+```text
+rolling 50 concursos
+rolling 100 concursos
+rolling 200 concursos
+expanding
+```
+
+Também comparar:
+
+```text
+primeiro terço
+segundo terço
+último terço
+```
+
+Objetivo:
+
+> Identificar mudança de regime e evitar promover estratégias cuja vantagem exista apenas em um trecho específico do histórico.
+
+---
+
+# Controle de múltiplos testes
+
+Quanto mais estratégias são testadas, maior o risco de `winner's curse`.
+
+Registrar:
+
+```text
+n_strategies_tested
+search_space
+best_in_sample
+best_nested
+```
+
+Nunca tratar a melhor estratégia retrospectiva como evidência suficiente de ganho real.
+
+---
+
+# Stability / Churn
+
+Para qualquer seletor nested:
+
+```text
+changes
+mean_run_length
+most_used_strategy
+strategy_usage
+```
+
+Mudança excessiva de estratégia pode indicar seleção de ruído.
 
 ---
 
@@ -989,21 +894,29 @@ Hard Constraint do Flamengo preservada
 distribuição inviável rejeitada
 ```
 
+TrueOracleXYZ:
+
+```text
+usa resultado real somente em função diagnostic_only
+nunca é chamado pela previsão do próximo concurso
+preserva X/Y/Z exatamente
+preserva 9/5/0
+preserva Flamengo
+TrueOracleXYZ >= ticket XYZ probabilístico da mesma distribuição
+```
+
 Walk-forward:
 
 ```python
 assert train_contest < test_contest
 ```
 
-Testes futuros obrigatórios:
+Bootstrap:
 
 ```text
-XYZDistributionBacktest sem leakage
-OracleXYZ marcado como diagnostic_only
-nested seleciona somente com dados passados
-bootstrap reamostra concursos inteiros
-requested_distribution == effective_distribution em XYZ válido
-P13 optimizer nunca viola constraints
+reamostrar concursos inteiros
+seed reproduzível
+IC95% registrado
 ```
 
 ---
@@ -1041,6 +954,7 @@ stddev
 oracle_capture_rate
 bootstrap_ci_low
 bootstrap_ci_high
+n_strategies_tested
 git_commit
 ```
 
@@ -1070,8 +984,7 @@ python -m unittest discover -v
 - [x] walk-forward;
 - [x] métricas P13+/P12+;
 - [x] calibração Brier / Log Loss / ECE;
-- [x] benchmarks Top1;
-- [x] Top1-meta diagnóstico;
+- [x] benchmarks e meta-modelo Top1 diagnósticos;
 - [x] recovery + nested recovery;
 - [x] overlap/pairwise inicial;
 - [x] OracleAllocator;
@@ -1080,70 +993,65 @@ python -m unittest discover -v
 - [x] regret allocator/selector/full;
 - [x] DistributionBacktest seguro `14/5/0 → 14/0/5`;
 - [x] OracleDistribution;
-- [x] `is_xyz_distribution_valid()`;
-- [x] `generate_xyz_neighbors()`;
-- [x] `generate_xyz_radius()`;
-- [x] `xyz_distribution_ticket()` via Programação Dinâmica;
-- [x] Hard Constraint do Flamengo integrada ao DP XYZ;
-- [x] testes unitários do núcleo XYZ.
+- [x] núcleo XYZ via Programação Dinâmica;
+- [x] Hard Constraint do Flamengo dentro do DP XYZ;
+- [x] XYZDistributionBacktest raio 1;
+- [x] XYZ vs SAFE;
+- [x] Frozen Selection XYZ + Usage;
+- [x] regret por distribuição XYZ;
+- [x] testes end-to-end XYZ.
 
-## Fase 1 — XYZ end-to-end
+## Fase 1 — diagnóstico estrutural decisivo
 
-1. [x] implementar `XYZDistributionBacktest` para `9/5/5 ± raio 1`;
-2. [x] imprimir `[XYZ DISTRIBUTION BACKTEST]` em `main.py`;
-3. [x] comparar `best_safe × best_xyz`;
-4. [x] implementar `OracleXYZ`;
-5. [x] imprimir `OracleXYZ Usage`;
-6. [x] implementar regret por distribuição XYZ;
-7. [x] adicionar testes end-to-end XYZ sem leakage.
+1. [ ] renomear o OracleXYZ atual para `XYZ Retrospective Frozen Selection`;
+2. [ ] implementar `true_oracle_xyz_ticket()`;
+3. [ ] implementar `TrueOracleXYZByDistribution`;
+4. [ ] implementar `TrueOracleXYZ` + Usage;
+5. [ ] comparar `OracleDistribution × TrueOracleXYZ × OracleFull`;
+6. [ ] calcular Oracle Capture Rate XYZ.
 
-## Fase 2 — significância e robustez
+## Fase 2 — validar o espaço SAFE
 
-8. [ ] pairwise XYZ vs safe;
+7. [ ] implementar `NestedDistributionSelector`;
+8. [ ] pairwise SAFE tail-aware;
 9. [ ] bootstrap pareado por concurso;
 10. [ ] IC95% para delta P13+/P12+;
-11. [ ] `OracleDistribution Usage`;
-12. [ ] regret por distribuição segura fixa;
-13. [ ] `NestedDistributionSelector` seguro.
+11. [ ] OracleDistribution Usage;
+12. [ ] regret por distribuição segura fixa.
 
-## Fase 3 — validação prospectiva XYZ
+## Fase 3 — decisão sobre continuidade XYZ
 
-14. [ ] `NestedXYZDistributionSelector` raio 1;
-15. [ ] regularização/shrinkage do seletor;
-16. [ ] Stability / Churn;
-17. [ ] decidir se raio 2 merece ser aberto;
-18. [ ] promover XYZ somente se superar baseline seguro em nested.
+13. [ ] decidir se XYZ possui headroom estrutural superior ao SAFE;
+14. [ ] somente se sim, implementar `ExactXYZP13Optimizer`;
+15. [ ] comparar `coverage_sum × direct_P13_optimizer`;
+16. [ ] somente depois considerar `NestedXYZDistributionSelector`;
+17. [ ] radius=2 apenas se houver evidência estrutural + nested.
 
-## Fase 4 — objetivo direto P13+
+## Fase 4 — otimização conjunta das marcas extras
 
-19. [ ] implementar cálculo exato de P13+ para ticket candidato;
-20. [ ] criar `ExactXYZP13Optimizer`;
-21. [ ] comparar `coverage_sum × direct_P13_optimizer`;
-22. [ ] validar em nested walk-forward.
+18. [ ] `JointMarkAllocator`;
+19. [ ] `joint_probability`;
+20. [ ] Top1-only baseline;
+21. [ ] Extra Mark Efficiency;
+22. [ ] Oracle Capture Rate SAFE/Joint;
+23. [ ] Recovery Profile.
 
-## Fase 5 — valor das marcações extras
+## Fase 5 — aprendizado de valor da marca extra
 
-23. [ ] Top1-only;
-24. [ ] Extra Mark Efficiency;
-25. [ ] Oracle Capture Rate;
-26. [ ] Recovery Profile.
+24. [ ] Opportunity Dataset;
+25. [ ] DoubleValueModel;
+26. [ ] `joint_learned`;
+27. [ ] nested walk-forward do modelo aprendido.
 
-## Fase 6 — otimização conjunta
+## Fase 6 — robustez temporal e estatística
 
-27. [ ] `JointMarkAllocator`;
-28. [ ] `joint_probability`;
-29. [ ] Opportunity Dataset;
-30. [ ] DoubleValueModel;
-31. [ ] `joint_learned`.
-
-## Fase 7 — robustez final
-
-32. [ ] rolling vs expanding;
-33. [ ] decay temporal nested;
-34. [ ] reliability tables;
-35. [ ] `output/experiments.csv`;
-36. [ ] bootstrap final;
-37. [ ] relatório comparativo de todas as estratégias promovíveis.
+28. [ ] rolling 50/100/200 vs expanding;
+29. [ ] stability por era;
+30. [ ] decay temporal nested;
+31. [ ] Stability / Churn;
+32. [ ] controle de múltiplos testes;
+33. [ ] `output/experiments.csv`;
+34. [ ] bootstrap final.
 
 ---
 
@@ -1165,16 +1073,16 @@ manter estabilidade temporal
 respeitar todas as Hard Constraints
 ```
 
-Para XYZ, acrescentar:
+Para XYZ:
 
 ```text
-superar o baseline seguro em nested
+TrueOracleXYZ deve justificar a continuação da linha
 ↓
-justificar a remoção de Top1 em alguns jogos
+o ganho deve existir além do Frozen Selection retrospectivo
 ↓
-mostrar que o ganho não depende de uma única distribuição extrema
+se houver novo otimizador, ele deve vencer em nested
 ↓
-mostrar estabilidade suficiente da distribuição selecionada
+remover Top1 precisa produzir benefício mensurável
 ```
 
 Nenhuma estratégia deve ser promovida apenas porque foi a melhor depois de testar muitas alternativas retrospectivamente.
@@ -1188,25 +1096,27 @@ Baseline seguro
       +
 Oracle Decomposition
       +
-DistributionBacktest seguro
+DistributionBacktest SAFE
       +
-XYZ DP já implementado
+OracleDistribution
       +
-XYZDistributionBacktest
+XYZ raio 1 já testado
       +
-OracleXYZ
+TrueOracleXYZ
+      ↓
+DECISÃO: continuar ou congelar XYZ
+      ↓
+NestedDistributionSelector SAFE
       +
 Pairwise / Bootstrap
       +
-NestedDistributionSelector
+JointMarkAllocator
       +
-NestedXYZDistributionSelector
+Opportunity Dataset / DoubleValueModel
       +
-ExactXYZP13Optimizer
+Exact P13+ optimizer somente onde houver headroom
       +
-JointMarkAllocator / DoubleValueModel
-      +
-Regret / Stability / Controle de Experimentos
+Robustez temporal / Controle de Experimentos
       +
 Hard Constraints
       ↓
