@@ -7,6 +7,7 @@ import json
 import math
 import random
 import statistics
+from collections import Counter
 from itertools import combinations
 from pathlib import Path
 
@@ -910,8 +911,73 @@ def true_oracle_xyz(
         "by_distribution": {
             key: _hit_summary(values) for key, values in hits_by_distribution.items()
         },
+        "feasibility": {
+            key: {
+                "feasible_14": sum(hit == 14 for hit in values),
+                "feasible_14_rate": round(sum(hit == 14 for hit in values) / len(values), 8),
+                "feasible_13_plus": sum(hit >= 13 for hit in values),
+                "feasible_13_plus_rate": round(sum(hit >= 13 for hit in values) / len(values), 8),
+            }
+            for key, values in hits_by_distribution.items()
+        },
         "overall": _hit_summary(best_hits),
         "usage": usage,
+    }
+
+
+def actual_rank_profile(
+    contests: dict[int, list[Match]],
+    center: tuple[int, int, int] = (9, 5, 5),
+    radius: int = 1,
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+) -> dict[str, object]:
+    """Describe the realized rank composition on the evaluation contests.
+
+    This is outcome-based telemetry only.  It never builds a ticket and uses
+    the same temporal evaluation slice as the walk-forward backtests, making
+    comparisons with XYZ results direct without leaking into prediction.
+    """
+    contest_ids = sorted(contests)
+    if not 1 <= minimum_history < len(contest_ids):
+        raise ValueError("janela inicial inválida para perfil real de ranks")
+    distributions = generate_xyz_radius(center, radius)
+    profiles: list[tuple[int, int, int]] = []
+    for position in range(minimum_history, len(contest_ids)):
+        assert contest_ids[position - 1] < contest_ids[position]
+        games = contests[contest_ids[position]]
+        ranks = [0, 0, 0]
+        for game in games:
+            if game.actual not in ("1", "X", "2"):
+                raise ValueError("perfil real de ranks exige resultados reais")
+            ranks[game.ranking.index(game.actual)] += 1
+        profiles.append(tuple(ranks))
+    frequencies = Counter(profiles)
+    return {
+        "diagnostic_only": True,
+        "test_contests": len(profiles),
+        "mean_top1": round(statistics.mean(p[0] for p in profiles), 6),
+        "mean_top2": round(statistics.mean(p[1] for p in profiles), 6),
+        "mean_top3": round(statistics.mean(p[2] for p in profiles), 6),
+        "median_top1": float(statistics.median(p[0] for p in profiles)),
+        "median_top2": float(statistics.median(p[1] for p in profiles)),
+        "median_top3": float(statistics.median(p[2] for p in profiles)),
+        "most_common_profiles": [
+            {"profile": list(profile), "contests": count,
+             "rate": round(count / len(profiles), 8)}
+            for profile, count in sorted(
+                frequencies.items(), key=lambda item: (-item[1], item[0])
+            )[:10]
+        ],
+        "distance_to_xyz": {
+            xyz_distribution_id(point): {
+                "mean_l1": round(statistics.mean(
+                    sum(abs(actual - target) for actual, target in zip(profile, point))
+                    for profile in profiles
+                ), 6),
+                "exact_profile_rate": round(frequencies[point] / len(profiles), 8),
+            }
+            for point in distributions
+        },
     }
 
 
@@ -1407,7 +1473,7 @@ def train(history_path: str, model_path: str,
     safe_diagnostics = distribution_backtest(contests)
     true_xyz = true_oracle_xyz(contests)
     model = {
-        "version": 15, "selected_policy": selected,
+        "version": 16, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -1422,6 +1488,7 @@ def train(history_path: str, model_path: str,
         "oracle_decomposition": oracle_diagnostics,
         "distribution_backtest": safe_diagnostics,
         "xyz_distribution_backtest": xyz_distribution_backtest(contests),
+        "actual_rank_profile": actual_rank_profile(contests),
         "true_oracle_xyz": {
             **true_xyz,
             "comparison": {

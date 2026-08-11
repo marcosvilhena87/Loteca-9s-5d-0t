@@ -21,6 +21,7 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  xyz_distribution_ticket, xyz_distribution_backtest,
                                  oracle_distribution_ticket, true_oracle_xyz,
                                  true_oracle_xyz_ticket,
+                                 actual_rank_profile,
                                  walk_forward_top1_meta)
 
 
@@ -386,6 +387,27 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(sum(diagnostic["usage"].values()), 1)
         self.assertGreaterEqual(diagnostic["overall"]["mean"],
                                 diagnostic["by_distribution"]["XYZ_09_05_05"]["mean"])
+        feasibility = diagnostic["feasibility"]["XYZ_09_05_05"]
+        self.assertEqual(feasibility["feasible_13_plus"],
+                         diagnostic["by_distribution"]["XYZ_09_05_05"]["13"] +
+                         diagnostic["by_distribution"]["XYZ_09_05_05"]["14"])
+
+    def test_actual_rank_profile_uses_only_evaluation_slice(self):
+        contests = {
+            1: [Match(1, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1}, "2")
+                for i in range(14)],
+            2: [Match(2, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1},
+                      "1" if i < 9 else "X") for i in range(14)],
+            3: [Match(3, i + 1, "A", "B", {"1": .6, "X": .3, "2": .1},
+                      "1" if i < 9 else "X") for i in range(14)],
+        }
+        profile = actual_rank_profile(contests, minimum_history=1)
+        self.assertTrue(profile["diagnostic_only"])
+        self.assertEqual(profile["test_contests"], 2)
+        self.assertEqual((profile["mean_top1"], profile["mean_top2"],
+                          profile["mean_top3"]), (9, 5, 0))
+        self.assertEqual(profile["most_common_profiles"][0]["profile"], [9, 5, 0])
+        self.assertEqual(profile["distance_to_xyz"]["XYZ_09_05_05"]["mean_l1"], 5)
 
 
 if __name__ == "__main__":

@@ -104,10 +104,21 @@ def main() -> None:
               f"um {regret['regret_1_rate']:.2%} | 2+ {regret['regret_2plus_rate']:.2%} | "
               f"máximo {regret['max_regret']}")
     true_xyz = model["true_oracle_xyz"]
+    profile = model["actual_rank_profile"]
+    print("[ACTUAL RANK PROFILE] "
+          f"médias T1/T2/T3 {profile['mean_top1']:.3f}/"
+          f"{profile['mean_top2']:.3f}/{profile['mean_top3']:.3f} | "
+          f"medianas {profile['median_top1']:.0f}/"
+          f"{profile['median_top2']:.0f}/{profile['median_top3']:.0f}")
+    print(f"[ACTUAL RANK PROFILE MOST COMMON] {profile['most_common_profiles']}")
     print("[TRUE ORACLE XYZ BY DISTRIBUTION]")
     for name, result in true_xyz["by_distribution"].items():
         print(f"  {name}: P13+ {result['p13_plus_empirical']:.2%} | "
               f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f}")
+    print("[XYZ ORACLE FEASIBILITY]")
+    for name, result in true_xyz["feasibility"].items():
+        print(f"  {name}: feasible14 {result['feasible_14_rate']:.2%} | "
+              f"feasible13+ {result['feasible_13_plus_rate']:.2%}")
     result = true_xyz["overall"]
     print(f"[TRUE ORACLE XYZ] P13+ {result['p13_plus_empirical']:.2%} | "
           f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f} | "

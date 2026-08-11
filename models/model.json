@@ -1,5 +1,5 @@
 {
-  "version": 15,
+  "version": 16,
   "selected_policy": "uncertainty",
   "selected_second_mark": "top2_baseline",
   "contests_evaluated": 448,
@@ -1009,6 +1009,138 @@
     },
     "diagnostic_only": true
   },
+  "actual_rank_profile": {
+    "diagnostic_only": true,
+    "test_contests": 418,
+    "mean_top1": 7.200957,
+    "mean_top2": 3.763158,
+    "mean_top3": 3.035885,
+    "median_top1": 7.0,
+    "median_top2": 4.0,
+    "median_top3": 3.0,
+    "most_common_profiles": [
+      {
+        "profile": [
+          7,
+          4,
+          3
+        ],
+        "contests": 31,
+        "rate": 0.07416268
+      },
+      {
+        "profile": [
+          8,
+          3,
+          3
+        ],
+        "contests": 28,
+        "rate": 0.06698565
+      },
+      {
+        "profile": [
+          6,
+          5,
+          3
+        ],
+        "contests": 24,
+        "rate": 0.05741627
+      },
+      {
+        "profile": [
+          8,
+          4,
+          2
+        ],
+        "contests": 21,
+        "rate": 0.05023923
+      },
+      {
+        "profile": [
+          7,
+          3,
+          4
+        ],
+        "contests": 18,
+        "rate": 0.0430622
+      },
+      {
+        "profile": [
+          9,
+          3,
+          2
+        ],
+        "contests": 18,
+        "rate": 0.0430622
+      },
+      {
+        "profile": [
+          6,
+          3,
+          5
+        ],
+        "contests": 16,
+        "rate": 0.03827751
+      },
+      {
+        "profile": [
+          5,
+          5,
+          4
+        ],
+        "contests": 14,
+        "rate": 0.03349282
+      },
+      {
+        "profile": [
+          7,
+          6,
+          1
+        ],
+        "contests": 14,
+        "rate": 0.03349282
+      },
+      {
+        "profile": [
+          7,
+          5,
+          2
+        ],
+        "contests": 13,
+        "rate": 0.03110048
+      }
+    ],
+    "distance_to_xyz": {
+      "XYZ_09_05_05": {
+        "mean_l1": 5.980861,
+        "exact_profile_rate": 0.0
+      },
+      "XYZ_10_05_04": {
+        "mean_l1": 6.095694,
+        "exact_profile_rate": 0.0
+      },
+      "XYZ_10_04_05": {
+        "mean_l1": 6.373206,
+        "exact_profile_rate": 0.0
+      },
+      "XYZ_09_06_04": {
+        "mean_l1": 6.028708,
+        "exact_profile_rate": 0.0
+      },
+      "XYZ_09_04_06": {
+        "mean_l1": 6.488038,
+        "exact_profile_rate": 0.0
+      },
+      "XYZ_08_06_05": {
+        "mean_l1": 6.15311,
+        "exact_profile_rate": 0.0
+      },
+      "XYZ_08_05_06": {
+        "mean_l1": 6.334928,
+        "exact_profile_rate": 0.0
+      }
+    }
+  },
   "true_oracle_xyz": {
     "test_contests": 418,
     "diagnostic_only": true,
@@ -1070,6 +1202,50 @@
         "p13_plus_empirical": 0.79665072,
         "p12_plus_empirical": 0.93062201,
         "mean": 13.253589
+      }
+    },
+    "feasibility": {
+      "XYZ_09_05_05": {
+        "feasible_14": 258,
+        "feasible_14_rate": 0.61722488,
+        "feasible_13_plus": 368,
+        "feasible_13_plus_rate": 0.88038278
+      },
+      "XYZ_10_05_04": {
+        "feasible_14": 254,
+        "feasible_14_rate": 0.6076555,
+        "feasible_13_plus": 354,
+        "feasible_13_plus_rate": 0.84688995
+      },
+      "XYZ_10_04_05": {
+        "feasible_14": 230,
+        "feasible_14_rate": 0.55023923,
+        "feasible_13_plus": 339,
+        "feasible_13_plus_rate": 0.81100478
+      },
+      "XYZ_09_06_04": {
+        "feasible_14": 256,
+        "feasible_14_rate": 0.61244019,
+        "feasible_13_plus": 358,
+        "feasible_13_plus_rate": 0.85645933
+      },
+      "XYZ_09_04_06": {
+        "feasible_14": 218,
+        "feasible_14_rate": 0.5215311,
+        "feasible_13_plus": 326,
+        "feasible_13_plus_rate": 0.77990431
+      },
+      "XYZ_08_06_05": {
+        "feasible_14": 246,
+        "feasible_14_rate": 0.58851675,
+        "feasible_13_plus": 347,
+        "feasible_13_plus_rate": 0.83014354
+      },
+      "XYZ_08_05_06": {
+        "feasible_14": 229,
+        "feasible_14_rate": 0.54784689,
+        "feasible_13_plus": 333,
+        "feasible_13_plus_rate": 0.79665072
       }
     },
     "overall": {
