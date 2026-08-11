@@ -78,6 +78,29 @@ def main() -> None:
     print(f"[ORACLE DISTRIBUTION] P13+ "
           f"{distribution_oracle['p13_plus_empirical']:.2%} | "
           f"P12+ {distribution_oracle['p12_plus_empirical']:.2%}")
+    xyz = model["xyz_distribution_backtest"]
+    print("[XYZ DISTRIBUTION BACKTEST]")
+    for name, result in xyz["distributions"].items():
+        print(f"  {name}: 14 {result['14']} | 13 {result['13']} | 12 {result['12']} | "
+              f"P13+ {result['p13_plus_empirical']:.2%} | "
+              f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f} | "
+              f"mediana {result['median']:.1f} | desvio {result['stddev']:.4f}")
+    comparison = xyz["xyz_vs_safe"]
+    print(f"[XYZ VS SAFE] best_safe {comparison['best_safe']} | "
+          f"best_xyz {comparison['best_xyz']} | "
+          f"delta P13+ {comparison['delta_p13_plus']:+.2%} | "
+          f"delta P12+ {comparison['delta_p12_plus']:+.2%} | "
+          f"delta média {comparison['delta_mean']:+.4f}")
+    xyz_oracle = xyz["oracle_xyz"]
+    print(f"[ORACLE XYZ] P13+ {xyz_oracle['p13_plus_empirical']:.2%} | "
+          f"P12+ {xyz_oracle['p12_plus_empirical']:.2%} | "
+          f"média {xyz_oracle['mean']:.4f}")
+    print(f"[ORACLE XYZ USAGE] {xyz['oracle_xyz_usage']}")
+    for name, regret in xyz["regret_by_distribution"].items():
+        print(f"[REGRET {name}] média {regret['mean_regret']:.4f} | "
+              f"mediana {regret['median_regret']:.1f} | zero {regret['regret_0_rate']:.2%} | "
+              f"um {regret['regret_1_rate']:.2%} | 2+ {regret['regret_2plus_rate']:.2%} | "
+              f"máximo {regret['max_regret']}")
     predict(args.next_contest, args.model, args.output)
 
 

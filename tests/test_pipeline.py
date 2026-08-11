@@ -18,7 +18,7 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  distribution_backtest, distribution_ticket,
                                  generate_xyz_neighbors, generate_xyz_radius,
                                  is_xyz_distribution_valid, xyz_distribution_id,
-                                 xyz_distribution_ticket,
+                                 xyz_distribution_ticket, xyz_distribution_backtest,
                                  oracle_distribution_ticket,
                                  walk_forward_top1_meta)
 
@@ -342,6 +342,23 @@ class PipelineTests(unittest.TestCase):
         games[0] = Match(1, 1, "A", "FLAMENGO/RJ", {"1": .6, "X": .3, "2": .1})
         with self.assertRaisesRegex(ValueError, "Flamengo"):
             xyz_distribution_ticket(games, (14, 5, 0))
+
+    def test_xyz_backtest_is_leak_free_and_reports_oracle_regret(self):
+        contests = {contest: [Match(contest, i + 1, "A", "B",
+                    {"1": .5, "X": .3, "2": .2}, "2" if i < 5 else "1")
+                    for i in range(14)] for contest in range(1, 4)}
+        result = xyz_distribution_backtest(contests, minimum_history=2)
+        self.assertTrue(result["no_future_information"])
+        self.assertTrue(result["diagnostic_only"])
+        self.assertEqual(result["test_contests"], 1)
+        self.assertEqual(len(result["distributions"]), 7)
+        self.assertEqual(sum(result["oracle_xyz_usage"].values()), 1)
+        self.assertEqual(set(result["distributions"]),
+                         set(result["regret_by_distribution"]))
+        self.assertGreaterEqual(result["oracle_xyz"]["mean"],
+                                max(value["mean"] for value in
+                                    result["distributions"].values()))
+        self.assertIn(result["xyz_vs_safe"]["best_xyz"], result["distributions"])
 
 
 if __name__ == "__main__":
