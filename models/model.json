@@ -1,5 +1,5 @@
 {
-  "version": 14,
+  "version": 15,
   "selected_policy": "uncertainty",
   "selected_second_mark": "top2_baseline",
   "contests_evaluated": 448,
@@ -983,7 +983,7 @@
         "max_regret": 3
       }
     },
-    "oracle_xyz": {
+    "retrospective_frozen_selection": {
       "14": 1,
       "13": 3,
       "12": 26,
@@ -991,7 +991,7 @@
       "p12_plus_empirical": 0.07177033,
       "mean": 8.978469
     },
-    "oracle_xyz_usage": {
+    "retrospective_frozen_selection_usage": {
       "XYZ_09_05_05": 116,
       "XYZ_10_05_04": 169,
       "XYZ_10_04_05": 20,
@@ -1008,6 +1008,105 @@
       "delta_mean": -0.423445
     },
     "diagnostic_only": true
+  },
+  "true_oracle_xyz": {
+    "test_contests": 418,
+    "diagnostic_only": true,
+    "center": "XYZ_09_05_05",
+    "radius": 1,
+    "by_distribution": {
+      "XYZ_09_05_05": {
+        "14": 258,
+        "13": 110,
+        "12": 37,
+        "p13_plus_empirical": 0.88038278,
+        "p12_plus_empirical": 0.96889952,
+        "mean": 13.456938
+      },
+      "XYZ_10_05_04": {
+        "14": 254,
+        "13": 100,
+        "12": 52,
+        "p13_plus_empirical": 0.84688995,
+        "p12_plus_empirical": 0.97129187,
+        "mean": 13.416268
+      },
+      "XYZ_10_04_05": {
+        "14": 230,
+        "13": 109,
+        "12": 53,
+        "p13_plus_empirical": 0.81100478,
+        "p12_plus_empirical": 0.93779904,
+        "mean": 13.270335
+      },
+      "XYZ_09_06_04": {
+        "14": 256,
+        "13": 102,
+        "12": 50,
+        "p13_plus_empirical": 0.85645933,
+        "p12_plus_empirical": 0.97607656,
+        "mean": 13.440191
+      },
+      "XYZ_09_04_06": {
+        "14": 218,
+        "13": 108,
+        "12": 62,
+        "p13_plus_empirical": 0.77990431,
+        "p12_plus_empirical": 0.92822967,
+        "mean": 13.200957
+      },
+      "XYZ_08_06_05": {
+        "14": 246,
+        "13": 101,
+        "12": 48,
+        "p13_plus_empirical": 0.83014354,
+        "p12_plus_empirical": 0.94497608,
+        "mean": 13.34689
+      },
+      "XYZ_08_05_06": {
+        "14": 229,
+        "13": 104,
+        "12": 56,
+        "p13_plus_empirical": 0.79665072,
+        "p12_plus_empirical": 0.93062201,
+        "mean": 13.253589
+      }
+    },
+    "overall": {
+      "14": 368,
+      "13": 37,
+      "12": 11,
+      "p13_plus_empirical": 0.96889952,
+      "p12_plus_empirical": 0.99521531,
+      "mean": 13.839713
+    },
+    "usage": {
+      "XYZ_09_05_05": 258,
+      "XYZ_10_05_04": 60,
+      "XYZ_10_04_05": 0,
+      "XYZ_09_06_04": 66,
+      "XYZ_09_04_06": 29,
+      "XYZ_08_06_05": 4,
+      "XYZ_08_05_06": 1
+    },
+    "comparison": {
+      "oracle_distribution": {
+        "14": 99,
+        "13": 74,
+        "12": 94,
+        "p13_plus_empirical": 0.4138756,
+        "p12_plus_empirical": 0.63875598,
+        "mean": 11.976077
+      },
+      "oracle_full": {
+        "14": 100,
+        "13": 74,
+        "12": 96,
+        "p13_plus_empirical": 0.41626794,
+        "p12_plus_empirical": 0.64593301,
+        "mean": 12.014354
+      }
+    }
   },
   "top1_meta": {
     "feature_names": [

@@ -454,7 +454,7 @@ XYZ não deve ser promovido nem expandido para raio 2 neste momento.
 
 ---
 
-# Importante — o “OracleXYZ” atual não é um oracle estrutural
+# XYZ Retrospective Frozen Selection
 
 A execução atual mostra:
 
@@ -492,7 +492,7 @@ usar o resultado real apenas para escolher retrospectivamente
 qual dos sete tickets congelados acertou mais
 ```
 
-Portanto, o nome conceitualmente mais correto é:
+Essa telemetria agora é exposta pelo nome conceitualmente correto:
 
 ```text
 XYZ Retrospective Frozen Selection
@@ -504,13 +504,13 @@ ou:
 XYZ Best Frozen Ticket
 ```
 
-O número `0.96%` mede o benefício de escolher retrospectivamente entre sete tickets já congelados — **não o teto estrutural do espaço XYZ**.
+O número `0.96%` mede o benefício de escolher retrospectivamente entre sete tickets já congelados — **não o teto estrutural do espaço XYZ**. O código e a saída não usam mais o rótulo ambíguo `OracleXYZ` para essa seleção.
 
 ---
 
-# Prioridade 1 — TrueOracleXYZ
+# TrueOracleXYZ — implementado
 
-Implementar um verdadeiro oracle estrutural XYZ.
+O verdadeiro oracle estrutural XYZ foi implementado como diagnóstico isolado da previsão.
 
 Para cada jogo, usando o resultado real apenas no diagnóstico:
 
@@ -549,19 +549,23 @@ true_oracle_xyz_by_distribution(...)
 true_oracle_xyz(...)
 ```
 
-Telemetria:
+Telemetria em 418 concursos:
 
 ```text
 [TRUE ORACLE XYZ BY DISTRIBUTION]
-XYZ_09_05_05 ...
-XYZ_10_05_04 ...
-...
+XYZ_09_05_05: P13+ 88.04% | P12+ 96.89% | média 13.4569
+XYZ_10_05_04: P13+ 84.69% | P12+ 97.13% | média 13.4163
+XYZ_10_04_05: P13+ 81.10% | P12+ 93.78% | média 13.2703
+XYZ_09_06_04: P13+ 85.65% | P12+ 97.61% | média 13.4402
+XYZ_09_04_06: P13+ 77.99% | P12+ 92.82% | média 13.2010
+XYZ_08_06_05: P13+ 83.01% | P12+ 94.50% | média 13.3469
+XYZ_08_05_06: P13+ 79.67% | P12+ 93.06% | média 13.2536
 
 [TRUE ORACLE XYZ]
-P13+:
-P12+:
-mean:
-usage:
+P13+: 96.89%
+P12+: 99.52%
+mean: 13.8397
+usage: 258 / 60 / 0 / 66 / 29 / 4 / 1
 ```
 
 Comparar:
@@ -572,19 +576,18 @@ TrueOracleXYZ
 OracleFull
 ```
 
-Pergunta decisiva:
+Leitura:
 
-> O fracasso operacional do XYZ vem do próprio espaço X/Y/Z ou da maneira como o otimizador atual escolhe as marcações dentro desse espaço?
+> O espaço XYZ possui headroom estrutural muito superior ao obtido pelo otimizador probabilístico atual. O fracasso operacional vem da escolha das marcações dentro do espaço, e não da ausência de tickets XYZ capazes de atingir a cauda 13+.
 
 Regra de decisão:
 
 ```text
-Se TrueOracleXYZ <= OracleDistribution:
-    reduzir drasticamente a prioridade do XYZ
-
-Se TrueOracleXYZ > OracleDistribution:
-    existe headroom estrutural e vale investigar um otimizador XYZ melhor
+TrueOracleXYZ > OracleDistribution
+    → existe headroom estrutural e vale investigar um otimizador XYZ melhor
 ```
+
+O resultado é apenas um teto retrospectivo: usa os resultados reais dentro do DP e **nunca pode selecionar o palpite do próximo concurso**.
 
 ---
 
@@ -1003,11 +1006,11 @@ python -m unittest discover -v
 
 ## Fase 1 — diagnóstico estrutural decisivo
 
-1. [ ] renomear o OracleXYZ atual para `XYZ Retrospective Frozen Selection`;
-2. [ ] implementar `true_oracle_xyz_ticket()`;
-3. [ ] implementar `TrueOracleXYZByDistribution`;
-4. [ ] implementar `TrueOracleXYZ` + Usage;
-5. [ ] comparar `OracleDistribution × TrueOracleXYZ × OracleFull`;
+1. [x] renomear o OracleXYZ atual para `XYZ Retrospective Frozen Selection`;
+2. [x] implementar `true_oracle_xyz_ticket()`;
+3. [x] implementar `TrueOracleXYZByDistribution`;
+4. [x] implementar `TrueOracleXYZ` + Usage;
+5. [x] comparar `OracleDistribution × TrueOracleXYZ × OracleFull`;
 6. [ ] calcular Oracle Capture Rate XYZ.
 
 ## Fase 2 — validar o espaço SAFE

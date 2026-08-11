@@ -91,16 +91,32 @@ def main() -> None:
           f"delta P13+ {comparison['delta_p13_plus']:+.2%} | "
           f"delta P12+ {comparison['delta_p12_plus']:+.2%} | "
           f"delta média {comparison['delta_mean']:+.4f}")
-    xyz_oracle = xyz["oracle_xyz"]
-    print(f"[ORACLE XYZ] P13+ {xyz_oracle['p13_plus_empirical']:.2%} | "
+    xyz_oracle = xyz["retrospective_frozen_selection"]
+    print(f"[XYZ RETROSPECTIVE FROZEN SELECTION] P13+ "
+          f"{xyz_oracle['p13_plus_empirical']:.2%} | "
           f"P12+ {xyz_oracle['p12_plus_empirical']:.2%} | "
           f"média {xyz_oracle['mean']:.4f}")
-    print(f"[ORACLE XYZ USAGE] {xyz['oracle_xyz_usage']}")
+    print("[XYZ RETROSPECTIVE FROZEN SELECTION USAGE] "
+          f"{xyz['retrospective_frozen_selection_usage']}")
     for name, regret in xyz["regret_by_distribution"].items():
         print(f"[REGRET {name}] média {regret['mean_regret']:.4f} | "
               f"mediana {regret['median_regret']:.1f} | zero {regret['regret_0_rate']:.2%} | "
               f"um {regret['regret_1_rate']:.2%} | 2+ {regret['regret_2plus_rate']:.2%} | "
               f"máximo {regret['max_regret']}")
+    true_xyz = model["true_oracle_xyz"]
+    print("[TRUE ORACLE XYZ BY DISTRIBUTION]")
+    for name, result in true_xyz["by_distribution"].items():
+        print(f"  {name}: P13+ {result['p13_plus_empirical']:.2%} | "
+              f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f}")
+    result = true_xyz["overall"]
+    print(f"[TRUE ORACLE XYZ] P13+ {result['p13_plus_empirical']:.2%} | "
+          f"P12+ {result['p12_plus_empirical']:.2%} | média {result['mean']:.4f} | "
+          f"usage {true_xyz['usage']}")
+    comparison = true_xyz["comparison"]
+    print("[ORACLE CEILING COMPARISON] "
+          f"Distribution {comparison['oracle_distribution']['p13_plus_empirical']:.2%} | "
+          f"TrueXYZ {result['p13_plus_empirical']:.2%} | "
+          f"Full {comparison['oracle_full']['p13_plus_empirical']:.2%}")
     predict(args.next_contest, args.model, args.output)
 
 
