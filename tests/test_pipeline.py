@@ -24,10 +24,27 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  actual_rank_profile,
                                  top1_miss_capture, top1_drop_oracle_capture,
                                  top1_fragility_benchmark,
+                                 top1_fragility_segments,
                                  walk_forward_top1_meta)
 
 
 class PipelineTests(unittest.TestCase):
+    def test_fragility_segments_use_fixed_pre_match_bins(self):
+        contests = {contest: [Match(contest, i + 1, "A", "B",
+                    {"1": .38 + i * .02, "X": .33 - i * .01,
+                     "2": .29 - i * .01}, "X" if i < 4 else "1")
+                    for i in range(14)] for contest in range(1, 4)}
+        result = top1_fragility_segments(contests, minimum_history=2)
+        self.assertTrue(result["diagnostic_only"])
+        self.assertTrue(result["no_future_information_in_ranking"])
+        self.assertEqual(set(result["segments"]),
+                         {"0.33-0.40", "0.40-0.45", "0.45-0.50",
+                          "0.50-0.55", "0.55-0.60", "0.60+"})
+        self.assertEqual(sum(segment["n"] for segment in result["segments"].values()), 14)
+        for segment in result["segments"].values():
+            self.assertEqual(set(segment["cutoffs"]), {"1", "3", "5", "7"})
+            self.assertGreaterEqual(segment["oracle_drop_rate"], 0.0)
+
     def test_fragility_benchmark_compares_all_scores_without_future_features(self):
         contests = {contest: [Match(contest, i + 1, "A", "B",
                     {"1": .50 + i / 1000, "X": .30, "2": .20 - i / 1000},

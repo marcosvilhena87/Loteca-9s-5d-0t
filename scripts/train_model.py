@@ -31,6 +31,9 @@ GAP_23_BINS = (0.02, 0.05, 0.10)
 SAFE_DISTRIBUTIONS = tuple((14, top2, 5 - top2) for top2 in range(5, -1, -1))
 FRAGILITY_CUTOFFS = (1, 3, 5, 7)
 FRAGILITY_SCORES = ("p", "margin", "entropy", "ratio2", "ratio3", "gap23", "ensemble")
+FRAGILITY_P_TOP1_BINS = (0.40, 0.45, 0.50, 0.55, 0.60)
+FRAGILITY_P_TOP1_LABELS = ("0.33-0.40", "0.40-0.45", "0.45-0.50",
+                           "0.50-0.55", "0.55-0.60", "0.60+")
 
 
 def _bin_index(value: float, boundaries: tuple[float, ...]) -> int:
@@ -62,6 +65,12 @@ def _fragility_order(games: list[Match], score: str) -> list[int]:
     if score not in FRAGILITY_SCORES:
         raise ValueError(f"score de fragilidade desconhecido: {score}")
     return sorted(range(14), key=lambda i: (-_fragility_scores(games[i])[score], i))
+
+
+def _fragility_p_top1_segment(game: Match) -> str:
+    """Assign a game to the fixed, pre-declared README p(Top1) bins."""
+    p_top1 = game.probabilities[game.ranking[0]]
+    return FRAGILITY_P_TOP1_LABELS[_bin_index(p_top1, FRAGILITY_P_TOP1_BINS)]
 
 
 def reliability_context(game: Match) -> tuple[int, int, str]:
@@ -964,6 +973,14 @@ def true_oracle_xyz(
                        for score in FRAGILITY_SCORES}
     total_drops = 0
     total_misses = 0
+    segment_counts = {
+        label: {
+            "n": 0, "misses": 0, "oracle_drops": 0,
+            "selected": {k: 0 for k in drop_cutoffs},
+            "captured_misses": {k: 0 for k in drop_cutoffs},
+            "captured_drops": {k: 0 for k in drop_cutoffs},
+        } for label in FRAGILITY_P_TOP1_LABELS
+    }
     for position in range(minimum_history, len(contest_ids)):
         assert contest_ids[position - 1] < contest_ids[position]
         games = contests[contest_ids[position]]
@@ -988,6 +1005,17 @@ def true_oracle_xyz(
         misses = {i for i, game in enumerate(games) if game.actual != game.ranking[0]}
         total_drops += len(dropped)
         total_misses += len(misses)
+        p_order = _fragility_order(games, "p")
+        for game_index, game in enumerate(games):
+            segment = segment_counts[_fragility_p_top1_segment(game)]
+            segment["n"] += 1
+            segment["misses"] += game_index in misses
+            segment["oracle_drops"] += game_index in dropped
+            for k in drop_cutoffs:
+                if game_index in p_order[:k]:
+                    segment["selected"][k] += 1
+                    segment["captured_misses"][k] += game_index in misses
+                    segment["captured_drops"][k] += game_index in dropped
         for score in FRAGILITY_SCORES:
             ranked_candidates = _fragility_order(games, score)
             for k in drop_cutoffs:
@@ -1060,6 +1088,43 @@ def true_oracle_xyz(
             "total_top1_misses": total_misses,
             "total_oracle_drops": total_drops,
         },
+        "top1_fragility_segments": {
+            "diagnostic_only": True,
+            "no_future_information_in_ranking": True,
+            "segment_feature": "p_top1",
+            "ranking_score": "1-p_top1",
+            "test_contests": len(best_hits),
+            "segments": {
+                label: {
+                    "n": values["n"],
+                    "misses": values["misses"],
+                    "miss_rate": round(values["misses"] / values["n"], 8)
+                    if values["n"] else 0.0,
+                    "oracle_drops": values["oracle_drops"],
+                    "oracle_drop_rate": round(values["oracle_drops"] / values["n"], 8)
+                    if values["n"] else 0.0,
+                    "cutoffs": {
+                        str(k): {
+                            "selected_games": values["selected"][k],
+                            "miss_capture_rate": round(
+                                values["captured_misses"][k] / values["misses"], 8
+                            ) if values["misses"] else 0.0,
+                            "oracle_drop_capture_rate": round(
+                                values["captured_drops"][k] / values["oracle_drops"], 8
+                            ) if values["oracle_drops"] else 0.0,
+                            "miss_lift": round(
+                                (values["captured_misses"][k] / values["selected"][k]) /
+                                (values["misses"] / values["n"]), 8
+                            ) if values["selected"][k] and values["misses"] else 0.0,
+                            "oracle_drop_lift": round(
+                                (values["captured_drops"][k] / values["selected"][k]) /
+                                (values["oracle_drops"] / values["n"]), 8
+                            ) if values["selected"][k] and values["oracle_drops"] else 0.0,
+                        } for k in drop_cutoffs
+                    },
+                } for label, values in segment_counts.items()
+            },
+        },
     }
 
 
@@ -1072,6 +1137,18 @@ def top1_fragility_benchmark(
     """Benchmark simple pre-match fragility rankings against both diagnostics."""
     return true_oracle_xyz(contests, center, radius, minimum_history)[
         "top1_fragility_benchmark"
+    ]
+
+
+def top1_fragility_segments(
+    contests: dict[int, list[Match]],
+    center: tuple[int, int, int] = (9, 5, 5),
+    radius: int = 1,
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+) -> dict[str, object]:
+    """Report where the pre-match Top1 fragility signal is concentrated."""
+    return true_oracle_xyz(contests, center, radius, minimum_history)[
+        "top1_fragility_segments"
     ]
 
 
@@ -1729,7 +1806,7 @@ def train(history_path: str, model_path: str,
     safe_diagnostics = distribution_backtest(contests)
     true_xyz = true_oracle_xyz(contests)
     model = {
-        "version": 19, "selected_policy": selected,
+        "version": 20, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -1748,6 +1825,7 @@ def train(history_path: str, model_path: str,
         "top1_miss_capture": top1_miss_capture(contests),
         "top1_drop_oracle_capture": true_xyz["top1_drop_oracle_capture"],
         "top1_fragility_benchmark": true_xyz["top1_fragility_benchmark"],
+        "top1_fragility_segments": true_xyz["top1_fragility_segments"],
         "true_oracle_xyz": {
             **true_xyz,
             "comparison": {
