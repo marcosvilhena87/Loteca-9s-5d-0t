@@ -95,6 +95,11 @@ def main() -> None:
               f"modelo {result['coverage_model_p13_plus']:.6%} -> "
               f"{result['direct_model_p13_plus']:.6%} | "
               f"ganho {result['mean_modeled_p13_plus_gain']:+.6%}")
+        paired = result["tail_aware_pairwise"]
+        low, high = paired["delta_p13_plus_ci95"]
+        print(f"    pareado: direct-only {paired['candidate_only_13_plus']} | "
+              f"coverage-only {paired['baseline_only_13_plus']} | "
+              f"IC95% delta P13+ [{low:+.2%}, {high:+.2%}]")
     comparison = xyz["xyz_vs_safe"]
     print(f"[XYZ VS SAFE] best_safe {comparison['best_safe']} | "
           f"best_xyz {comparison['best_xyz']} | "

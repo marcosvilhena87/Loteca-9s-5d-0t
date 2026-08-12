@@ -447,6 +447,21 @@ XYZ_08_05_06       0.48%     0.72%     +0.24 p.p.
 
 > O objetivo direto melhorou P13+ histórico em cinco das sete distribuições, mas ainda precisa de comparação pareada e bootstrap.
 
+## TailAwarePairwise
+
+A comparação `direct_p13` contra `coverage` agora preserva o pareamento por
+concurso e reporta eventos exclusivos de 13+, delta de média, bootstrap
+determinístico de concursos inteiros e estabilidade em três eras cronológicas.
+O relatório permanece `diagnostic_only`: seus resultados não promovem uma
+estratégia para o palpite operacional.
+
+```text
+amostra bootstrap: 2.000 reamostragens
+unidade: concurso completo
+intervalo: percentil 95% para delta P13+
+eras: early / middle / late
+```
+
 ---
 
 # Top1 Miss / Oracle Drop Capture
@@ -1254,10 +1269,10 @@ python -m unittest discover -v
 
 ## Fase 1 — validar objetivo e comparações
 
-1. [ ] TailAwarePairwise `XYZ_DIRECT_P13 vs XYZ_COVERAGE`;
-2. [ ] bootstrap pareado;
+1. [x] TailAwarePairwise `XYZ_DIRECT_P13 vs XYZ_COVERAGE`;
+2. [x] bootstrap pareado;
 3. [ ] block bootstrap;
-4. [ ] estabilidade do ganho por era.
+4. [x] estabilidade do ganho por era.
 
 ## Fase 2 — fragilidade condicional
 
