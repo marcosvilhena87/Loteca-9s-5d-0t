@@ -1524,6 +1524,9 @@ def xyz_distribution_backtest(
                 "modeled_p13_never_worse": all(
                     delta >= -1e-15 for delta in modeled_improvements[key]
                 ),
+                "tail_aware_pairwise": tail_aware_pairwise(
+                    hit_history[key], direct_hit_history[key]
+                ),
             }
             for key in summaries
         },
@@ -1608,6 +1611,68 @@ def _regret_summary(regrets: list[int]) -> dict[str, int | float]:
         "regret_2plus_rate": round(sum(value >= 2 for value in regrets) / len(regrets), 8),
         "max_regret": max(regrets),
     }
+
+
+def tail_aware_pairwise(
+    baseline_hits: list[int], candidate_hits: list[int],
+    bootstrap_resamples: int = 2000, seed: int = 20250308,
+) -> dict[str, object]:
+    """Compare two tickets on paired contests, prioritizing the 13+ tail.
+
+    The bootstrap resamples whole contests, preserving the dependence between
+    both tickets.  Chronological thirds expose gains concentrated in one era;
+    this is diagnostic evidence only and never participates in prediction.
+    """
+    if len(baseline_hits) != len(candidate_hits) or not baseline_hits:
+        raise ValueError("comparação pareada exige séries não vazias do mesmo tamanho")
+    if bootstrap_resamples < 1:
+        raise ValueError("bootstrap exige pelo menos uma reamostragem")
+    n = len(baseline_hits)
+
+    def summarize(indexes: list[int]) -> dict[str, float | int]:
+        if not indexes:
+            return {
+                "contests": 0, "candidate_only_13_plus": 0,
+                "baseline_only_13_plus": 0, "both_or_neither_13_plus": 0,
+                "delta_p13_plus": 0.0, "delta_mean_hits": 0.0,
+            }
+        base_tail = [baseline_hits[i] >= 13 for i in indexes]
+        candidate_tail = [candidate_hits[i] >= 13 for i in indexes]
+        return {
+            "contests": len(indexes),
+            "candidate_only_13_plus": sum(c and not b for b, c in zip(base_tail, candidate_tail)),
+            "baseline_only_13_plus": sum(b and not c for b, c in zip(base_tail, candidate_tail)),
+            "both_or_neither_13_plus": sum(b == c for b, c in zip(base_tail, candidate_tail)),
+            "delta_p13_plus": statistics.fmean(candidate_tail) - statistics.fmean(base_tail),
+            "delta_mean_hits": statistics.fmean(
+                candidate_hits[i] - baseline_hits[i] for i in indexes
+            ),
+        }
+
+    rng = random.Random(seed)
+    bootstrap = []
+    for _ in range(bootstrap_resamples):
+        sample = [rng.randrange(n) for _ in range(n)]
+        bootstrap.append(summarize(sample)["delta_p13_plus"])
+    bootstrap.sort()
+    lower = bootstrap[int(.025 * (bootstrap_resamples - 1))]
+    upper = bootstrap[int(.975 * (bootstrap_resamples - 1))]
+    boundaries = [round(n * part / 3) for part in range(4)]
+    result = summarize(list(range(n)))
+    result.update({
+        "paired": True,
+        "diagnostic_only": True,
+        "bootstrap_resamples": bootstrap_resamples,
+        "bootstrap_seed": seed,
+        "delta_p13_plus_ci95": [round(lower, 8), round(upper, 8)],
+        "eras": {
+            label: {key: round(value, 8) if isinstance(value, float) else value
+                    for key, value in summarize(list(range(boundaries[i], boundaries[i + 1]))).items()}
+            for i, label in enumerate(("early", "middle", "late"))
+        },
+    })
+    return {key: round(value, 8) if isinstance(value, float) else value
+            for key, value in result.items()}
 
 
 def oracle_decomposition(contests: dict[int, list[Match]], policy: str,
@@ -1806,7 +1871,7 @@ def train(history_path: str, model_path: str,
     safe_diagnostics = distribution_backtest(contests)
     true_xyz = true_oracle_xyz(contests)
     model = {
-        "version": 20, "selected_policy": selected,
+        "version": 21, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {

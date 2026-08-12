@@ -25,10 +25,33 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  top1_miss_capture, top1_drop_oracle_capture,
                                  top1_fragility_benchmark,
                                  top1_fragility_segments,
+                                 tail_aware_pairwise,
                                  walk_forward_top1_meta)
 
 
 class PipelineTests(unittest.TestCase):
+    def test_tail_aware_pairwise_is_paired_reproducible_and_segmented(self):
+        baseline = [12, 13, 10, 14, 11, 12]
+        candidate = [13, 12, 10, 14, 13, 12]
+        first = tail_aware_pairwise(baseline, candidate, bootstrap_resamples=100)
+        second = tail_aware_pairwise(baseline, candidate, bootstrap_resamples=100)
+        self.assertEqual(first, second)
+        self.assertTrue(first["paired"])
+        self.assertTrue(first["diagnostic_only"])
+        self.assertEqual(first["candidate_only_13_plus"], 2)
+        self.assertEqual(first["baseline_only_13_plus"], 1)
+        self.assertEqual(set(first["eras"]), {"early", "middle", "late"})
+        self.assertEqual(sum(era["contests"] for era in first["eras"].values()), 6)
+        self.assertEqual(len(first["delta_p13_plus_ci95"]), 2)
+
+    def test_tail_aware_pairwise_validates_inputs(self):
+        with self.assertRaises(ValueError):
+            tail_aware_pairwise([], [])
+        with self.assertRaises(ValueError):
+            tail_aware_pairwise([13], [13, 14])
+        with self.assertRaises(ValueError):
+            tail_aware_pairwise([13], [14], bootstrap_resamples=0)
+
     def test_fragility_segments_use_fixed_pre_match_bins(self):
         contests = {contest: [Match(contest, i + 1, "A", "B",
                     {"1": .38 + i * .02, "X": .33 - i * .01,
