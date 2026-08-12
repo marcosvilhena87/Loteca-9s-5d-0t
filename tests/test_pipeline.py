@@ -22,6 +22,7 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  oracle_distribution_ticket, true_oracle_xyz,
                                  true_oracle_xyz_ticket,
                                  actual_rank_profile,
+                                 top1_miss_capture, top1_drop_oracle_capture,
                                  walk_forward_top1_meta)
 
 
@@ -425,6 +426,35 @@ class PipelineTests(unittest.TestCase):
                           profile["mean_top3"]), (9, 5, 0))
         self.assertEqual(profile["most_common_profiles"][0]["profile"], [9, 5, 0])
         self.assertEqual(profile["distance_to_xyz"]["XYZ_09_05_05"]["mean_l1"], 5)
+
+    def test_top1_miss_capture_ranks_only_by_pre_match_probability(self):
+        contests = {
+            contest: [Match(contest, i + 1, "A", "B",
+                      {"1": .40 + i / 100, "X": .35 - i / 200, "2": .25 - i / 200},
+                      "X" if i < 3 else "1") for i in range(14)]
+            for contest in range(1, 4)
+        }
+        result = top1_miss_capture(contests, minimum_history=2)
+        self.assertTrue(result["diagnostic_only"])
+        self.assertEqual(result["test_contests"], 1)
+        self.assertEqual(result["total_top1_misses"], 3)
+        self.assertEqual(result["cutoffs"]["1"]["captured_misses"], 1)
+        self.assertEqual(result["cutoffs"]["3"]["capture_rate"], 1.0)
+
+    def test_top1_drop_oracle_capture_is_retrospective_and_bounded(self):
+        contests = {
+            contest: [Match(contest, i + 1, "A", "B",
+                      {"1": .50 + i / 1000, "X": .30, "2": .20 - i / 1000},
+                      "2" if i < 5 else "1") for i in range(14)]
+            for contest in range(1, 4)
+        }
+        result = top1_drop_oracle_capture(contests, minimum_history=2)
+        self.assertTrue(result["diagnostic_only"])
+        self.assertEqual(result["test_contests"], 1)
+        self.assertGreater(result["total_oracle_drops"], 0)
+        rates = [value["capture_rate"] for value in result["cutoffs"].values()]
+        self.assertEqual(rates, sorted(rates))
+        self.assertTrue(all(0.0 <= rate <= 1.0 for rate in rates))
 
 
 if __name__ == "__main__":

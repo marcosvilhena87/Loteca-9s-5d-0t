@@ -11,7 +11,8 @@ from collections import Counter
 from itertools import combinations
 from pathlib import Path
 
-from scripts.common import Match, group_contests, normalize_team, read_matches, ticket_metrics
+from scripts.common import (RESULTS, Match, group_contests, normalize_team, read_matches,
+                            ticket_metrics)
 
 PROBABILITY_POLICIES = ("gain", "top2_probability", "uncertainty", "margin", "ratio")
 HISTORICAL_POLICIES = ("hist_top1", "hist_top2")
@@ -927,6 +928,9 @@ def true_oracle_xyz(
     hits_by_distribution = {xyz_distribution_id(point): [] for point in distributions}
     best_hits: list[int] = []
     usage = {key: 0 for key in hits_by_distribution}
+    drop_cutoffs = (1, 3, 5, 7)
+    captured_drops = {k: 0 for k in drop_cutoffs}
+    total_drops = 0
     for position in range(minimum_history, len(contest_ids)):
         assert contest_ids[position - 1] < contest_ids[position]
         games = contests[contest_ids[position]]
@@ -943,6 +947,18 @@ def true_oracle_xyz(
         contest_best, _, selected = max(candidates)
         best_hits.append(contest_best)
         usage[selected] += 1
+        selected_point = next(point for point in distributions
+                              if xyz_distribution_id(point) == selected)
+        oracle_ticket = tickets[selected_point][0]
+        dropped = {i for i, (game, pick) in enumerate(zip(games, oracle_ticket))
+                   if game.ranking[0] not in pick}
+        ranked_candidates = sorted(
+            range(14),
+            key=lambda i: (games[i].probabilities[games[i].ranking[0]], i),
+        )
+        total_drops += len(dropped)
+        for k in drop_cutoffs:
+            captured_drops[k] += len(dropped.intersection(ranked_candidates[:k]))
     return {
         "test_contests": len(best_hits),
         "diagnostic_only": True,
@@ -962,6 +978,21 @@ def true_oracle_xyz(
         },
         "overall": _hit_summary(best_hits),
         "usage": usage,
+        "top1_drop_oracle_capture": {
+            "diagnostic_only": True,
+            "oracle": f"TrueOracleXYZ radius={radius}",
+            "candidate_score": "1 - p_top1",
+            "test_contests": len(best_hits),
+            "total_oracle_drops": total_drops,
+            "cutoffs": {
+                str(k): {
+                    "captured_oracle_drops": captured_drops[k],
+                    "capture_rate": round(captured_drops[k] / total_drops, 8)
+                    if total_drops else 0.0,
+                }
+                for k in drop_cutoffs
+            },
+        },
     }
 
 
@@ -1019,6 +1050,69 @@ def actual_rank_profile(
             for point in distributions
         },
     }
+
+
+def top1_miss_capture(
+    contests: dict[int, list[Match]],
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+    cutoffs: tuple[int, ...] = (1, 3, 5, 7),
+) -> dict[str, object]:
+    """Measure whether ``1 - p(Top1)`` locates realized Top1 misses.
+
+    The ranking uses pre-match probabilities only. Outcomes are consulted only
+    to score this diagnostic on the common walk-forward evaluation slice.
+    Rates use all realized misses as their denominator, so cutoffs are directly
+    comparable even when contests contain different numbers of Top1 failures.
+    """
+    contest_ids = sorted(contests)
+    if not 1 <= minimum_history < len(contest_ids):
+        raise ValueError("janela inicial inválida para Top1 Miss Capture")
+    if not cutoffs or any(not isinstance(k, int) or not 1 <= k <= 14 for k in cutoffs):
+        raise ValueError("cutoffs de Top1 Miss Capture devem estar entre 1 e 14")
+    captured = {k: 0 for k in cutoffs}
+    total_misses = 0
+    for position in range(minimum_history, len(contest_ids)):
+        assert contest_ids[position - 1] < contest_ids[position]
+        games = contests[contest_ids[position]]
+        if any(game.actual not in RESULTS for game in games):
+            raise ValueError("Top1 Miss Capture exige resultados reais")
+        candidates = sorted(
+            range(14),
+            key=lambda i: (games[i].probabilities[games[i].ranking[0]], i),
+        )
+        misses = {i for i, game in enumerate(games) if game.actual != game.ranking[0]}
+        total_misses += len(misses)
+        for k in cutoffs:
+            captured[k] += len(misses.intersection(candidates[:k]))
+    return {
+        "diagnostic_only": True,
+        "score": "1 - p_top1",
+        "test_contests": len(contest_ids) - minimum_history,
+        "total_top1_misses": total_misses,
+        "cutoffs": {
+            str(k): {
+                "captured_misses": captured[k],
+                "capture_rate": round(captured[k] / total_misses, 8) if total_misses else 0.0,
+            }
+            for k in cutoffs
+        },
+    }
+
+
+def top1_drop_oracle_capture(
+    contests: dict[int, list[Match]],
+    center: tuple[int, int, int] = (9, 5, 5),
+    radius: int = 1,
+    minimum_history: int = MIN_WALK_FORWARD_CONTESTS,
+) -> dict[str, object]:
+    """Compare probability-ranked drop candidates with TrueOracleXYZ drops.
+
+    The oracle and outcomes remain confined to retrospective telemetry. The
+    candidate order itself is frozen from ``1 - p(Top1)`` before scoring.
+    """
+    return true_oracle_xyz(contests, center, radius, minimum_history)[
+        "top1_drop_oracle_capture"
+    ]
 
 
 def true_oracle_xyz_by_distribution(
@@ -1556,7 +1650,7 @@ def train(history_path: str, model_path: str,
     safe_diagnostics = distribution_backtest(contests)
     true_xyz = true_oracle_xyz(contests)
     model = {
-        "version": 17, "selected_policy": selected,
+        "version": 18, "selected_policy": selected,
         "selected_second_mark": "top2_baseline",
         "contests_evaluated": len(contests), "policy_backtest": evaluations,
         "walk_forward": {
@@ -1572,6 +1666,8 @@ def train(history_path: str, model_path: str,
         "distribution_backtest": safe_diagnostics,
         "xyz_distribution_backtest": xyz_distribution_backtest(contests),
         "actual_rank_profile": actual_rank_profile(contests),
+        "top1_miss_capture": top1_miss_capture(contests),
+        "top1_drop_oracle_capture": true_xyz["top1_drop_oracle_capture"],
         "true_oracle_xyz": {
             **true_xyz,
             "comparison": {
