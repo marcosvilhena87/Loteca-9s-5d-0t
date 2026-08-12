@@ -680,6 +680,29 @@ Baseline atual do Oracle Drop Capture:
 
 > Qualquer score novo deve vencer `1 - pTop1` prospectivamente. Ganho retrospectivo isolado não basta.
 
+## Benchmark simples — implementado
+
+O pipeline agora compara, no mesmo recorte temporal, todos os scores simples acima e uma
+combinação linear de pesos fixos. O ranking usa exclusivamente probabilidades pré-jogo;
+os resultados reais e o TrueOracleXYZ aparecem somente na avaliação diagnóstica.
+
+Capture@5 observado:
+
+```text
+score       Top1MissCapture  OracleDropCapture
+1-pTop1          44.09%            44.82%
+1-margin12       44.19%            45.06%
+entropy          43.84%            44.47%
+ratio2           43.95%            44.77%
+ratio3           43.63%            44.08%
+gap23            41.20%            41.97%
+ensemble         43.84%            44.62%
+```
+
+> `1-margin12` apresenta o melhor Capture@5 neste recorte, mas a vantagem é pequena e
+> permanece apenas como telemetria. O baseline operacional e as Hard Constraints não
+> foram alterados; promoção exige estabilidade temporal e impacto no P13+ do ticket.
+
 ---
 
 # Top1FragilitySegments
@@ -1177,7 +1200,8 @@ python -m unittest discover -v
 - [x] telemetria model_P13+ × historical_P13+;
 - [x] Top1 Miss Capture;
 - [x] Top1 Drop Oracle Capture;
-- [x] referência aleatória e Lift@K documentados.
+- [x] referência aleatória e Lift@K documentados;
+- [x] Top1FragilityBenchmark simples (Capture@K e Lift@K).
 
 ## Fase 1 — validar o objetivo direto
 
@@ -1187,13 +1211,13 @@ python -m unittest discover -v
 
 ## Fase 2 — `Top1FragilityBenchmark`
 
-4. [ ] benchmark `entropy`;
-5. [ ] benchmark `1 - margin_12`;
-6. [ ] benchmark `p_top2 / p_top1`;
-7. [ ] benchmark `p_top3 / p_top1`;
-8. [ ] benchmark `gap_23`;
-9. [ ] combinações lineares simples de scores;
-10. [ ] comparação Capture@K e Lift@K;
+4. [x] benchmark `entropy`;
+5. [x] benchmark `1 - margin_12`;
+6. [x] benchmark `p_top2 / p_top1`;
+7. [x] benchmark `p_top3 / p_top1`;
+8. [x] benchmark `gap_23`;
+9. [x] combinação linear simples de pesos fixos;
+10. [x] comparação Capture@K e Lift@K;
 11. [ ] pairwise do melhor score vs `1 - pTop1`.
 
 ## Fase 3 — `Top1FragilitySegments`

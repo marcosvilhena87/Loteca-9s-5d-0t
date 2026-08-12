@@ -23,10 +23,27 @@ from scripts.train_model import (exact_ticket, heuristic_ticket, probability_dia
                                  true_oracle_xyz_ticket,
                                  actual_rank_profile,
                                  top1_miss_capture, top1_drop_oracle_capture,
+                                 top1_fragility_benchmark,
                                  walk_forward_top1_meta)
 
 
 class PipelineTests(unittest.TestCase):
+    def test_fragility_benchmark_compares_all_scores_without_future_features(self):
+        contests = {contest: [Match(contest, i + 1, "A", "B",
+                    {"1": .50 + i / 1000, "X": .30, "2": .20 - i / 1000},
+                    "X" if i < 4 else "1") for i in range(14)]
+                    for contest in range(1, 4)}
+        result = top1_fragility_benchmark(contests, minimum_history=2)
+        self.assertTrue(result["diagnostic_only"])
+        self.assertTrue(result["no_future_information"])
+        self.assertEqual(set(result["scores"]),
+                         {"p", "margin", "entropy", "ratio2", "ratio3", "gap23", "ensemble"})
+        self.assertEqual(result["total_top1_misses"], 4)
+        for score in result["scores"].values():
+            self.assertEqual(set(score), {"top1_miss", "oracle_drop"})
+            self.assertEqual(set(score["top1_miss"]), {"1", "3", "5", "7"})
+            self.assertGreaterEqual(score["top1_miss"]["5"]["lift_vs_random"], 0.0)
+
     def test_tie_priority_is_one_then_two_then_x(self):
         game = Match(1, 1, "A", "B", {"1": .4, "X": .2, "2": .4})
         self.assertEqual(game.ranking, ["1", "2", "X"])
