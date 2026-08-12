@@ -587,7 +587,7 @@ Conclusão:
 
 ---
 
-# Top1FragilitySegments — próxima prioridade
+# Top1FragilitySegments — implementado
 
 Segmentar os jogos por:
 
@@ -631,6 +631,12 @@ oracle_drop_rate
 Capture@1/@3/@5/@7
 Lift@1/@3/@5/@7
 ```
+
+A implementação usa os bins fixos acima, mantém o ranking baseado somente em
+`1-pTop1` pré-jogo e reporta também quantos jogos foram selecionados em cada
+segmento. `miss_rate` e `oracle_drop_rate` são diagnósticos retrospectivos e não
+entram na construção do ticket. Os resultados ficam persistidos em
+`model.json` e aparecem no resumo do CLI.
 
 > Objetivo: encontrar regiões do espaço probabilístico em que o abandono de Top1 seja muito mais previsível do que na média global.
 
@@ -1200,8 +1206,8 @@ python -m unittest discover -v
 
 ## Fase 2 — explorar fragilidade condicional
 
-5. [ ] imprimir `FragilityBenchmark` no CLI;
-6. [ ] `Top1FragilitySegments` por pTop1;
+5. [x] imprimir `FragilityBenchmark` no CLI;
+6. [x] `Top1FragilitySegments` por pTop1;
 7. [ ] segmentação por margin;
 8. [ ] segmentação por entropy/ratios/gap23;
 9. [ ] `PairwiseFragilityRanking`;

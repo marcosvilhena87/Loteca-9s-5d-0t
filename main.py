@@ -131,6 +131,21 @@ def main() -> None:
     for cutoff, result in drop_capture["cutoffs"].items():
         print(f"  k={cutoff}: {result['captured_oracle_drops']}/"
               f"{drop_capture['total_oracle_drops']} ({result['capture_rate']:.2%})")
+    benchmark = model["top1_fragility_benchmark"]
+    print("[FRAGILITY BENCHMARK @5]")
+    for score, values in benchmark["scores"].items():
+        miss = values["top1_miss"]["5"]
+        oracle_drop = values["oracle_drop"]["5"]
+        print(f"  {score}: miss {miss['capture_rate']:.2%} | "
+              f"oracle {oracle_drop['capture_rate']:.2%} | "
+              f"lift {oracle_drop['lift_vs_random']:.2f}x")
+    print("[FRAGILITY SEGMENTS pTop1]")
+    for segment, values in model["top1_fragility_segments"]["segments"].items():
+        cutoff = values["cutoffs"]["5"]
+        print(f"  {segment}: n={values['n']} | miss {values['miss_rate']:.2%} | "
+              f"oracle drop {values['oracle_drop_rate']:.2%} | "
+              f"Capture@5 {cutoff['oracle_drop_capture_rate']:.2%} | "
+              f"Lift@5 {cutoff['oracle_drop_lift']:.2f}x")
     print("[TRUE ORACLE XYZ BY DISTRIBUTION]")
     for name, result in true_xyz["by_distribution"].items():
         print(f"  {name}: P13+ {result['p13_plus_empirical']:.2%} | "
