@@ -76,7 +76,7 @@ Ordem de comparação:
 7. estabilidade
 ```
 
-Brier, Log Loss, ECE, média, regret, overlap e win rates intermediários são diagnósticos. Uma estratégia só pode substituir o baseline se melhorar o **ticket fora da amostra**.
+Brier, Log Loss, ECE, média, regret, overlap, win rates e métricas de captura são diagnósticos. Uma estratégia só pode substituir o baseline se melhorar o **ticket fora da amostra**.
 
 ---
 
@@ -285,8 +285,6 @@ selector:  média 1.4689 | zero 17.94% | 2+ 44.26% | máximo 4
 full:      média 3.3038 | zero 0.96% | 2+ 95.22% | máximo 5
 ```
 
-Principal leitura:
-
 > O maior espaço de melhoria está na estrutura das marcações: onde proteger, qual rank usar e, no XYZ, quais Top1 abandonar.
 
 ---
@@ -320,8 +318,6 @@ Não promover qualquer distribuição SAFE sem `NestedDistributionSelector` e bo
 P13+: 41.39%
 P12+: 63.88%
 ```
-
-Comparação:
 
 ```text
 OracleDistribution: 41.39%
@@ -413,8 +409,6 @@ delta média: -0.4713
 
 # XYZ Retrospective Frozen Selection
 
-Escolha retrospectiva entre sete tickets já construídos por probabilidades:
-
 ```text
 P13+: 0.96%
 P12+: 7.18%
@@ -426,8 +420,6 @@ Esse diagnóstico **não é um oracle estrutural** e não pode ser usado para pr
 ---
 
 # Actual Rank Profile — implementado
-
-Perfil real dos ranks nos 418 concursos:
 
 ```text
 média   T1/T2/T3 = 7.201 / 3.763 / 3.036
@@ -444,8 +436,6 @@ Perfis mais frequentes:
 7/3/4 → 19 concursos (4.55%)
 9/3/2 → 18 concursos (4.31%)
 ```
-
-Leitura:
 
 > O concurso típico tem aproximadamente sete resultados Top1, quatro Top2 e três Top3. A principal dificuldade do XYZ é identificar antecipadamente **quais** Top1 falharão.
 
@@ -564,8 +554,6 @@ XYZ_08_06_05: 0.320970% → 0.350873%
 XYZ_08_05_06: 0.291482% → 0.314757%
 ```
 
-Leitura:
-
 > O objetivo direto melhora a probabilidade pré-jogo do próprio ticket em todas as distribuições avaliadas e também melhorou o P13+ histórico em cinco das sete distribuições. Ainda precisa de comparação pareada e bootstrap antes de qualquer promoção.
 
 ---
@@ -575,8 +563,6 @@ Leitura:
 Pergunta:
 
 > Quanto o próprio `1 - pTop1` consegue localizar os erros do Top1?
-
-Para cada concurso, os 14 jogos são ordenados por:
 
 ```text
 miss_score = 1 - pTop1
@@ -609,11 +595,7 @@ k=5 → 1.23x
 k=7 → 1.18x
 ```
 
-Leitura:
-
 > `1 - pTop1` contém sinal real para localizar Top1 frágeis, mas o sinal é apenas moderado. No top-5, 44.09% dos misses são capturados, contra 35.71% esperados por seleção aleatória.
-
-O resultado real entra apenas no cálculo retrospectivo de captura; o ranking usa exclusivamente informação pré-jogo.
 
 ---
 
@@ -628,11 +610,25 @@ k=5 → 912 / 2035 (44.82%)
 k=7 → 1222 / 2035 (60.05%)
 ```
 
-Leitura:
+Referência aleatória:
+
+```text
+k=1 → 7.14%
+k=3 → 21.43%
+k=5 → 35.71%
+k=7 → 50.00%
+```
+
+Lift aproximado:
+
+```text
+k=1 → 1.37x
+k=3 → 1.28x
+k=5 → 1.25x
+k=7 → 1.20x
+```
 
 > O mesmo sinal observado no Miss Capture aparece ao tentar antecipar os abandonos do oracle. Há informação pré-jogo útil, porém insuficiente para realizar sozinho o enorme headroom estrutural do XYZ.
-
-O principal gargalo passa a ser definido de forma mais precisa:
 
 ```text
 capacidade estrutural do XYZ: muito alta
@@ -642,75 +638,127 @@ concentração desse sinal em poucos jogos: ainda insuficiente
 
 ---
 
-# Próxima prioridade — melhorar o ranking de Top1 frágil
+# Top1FragilityBenchmark — prioridade imediata
 
-Antes de criar um modelo ML complexo, comparar benchmarks simples contra `1 - pTop1`.
-
-Scores candidatos:
+Antes de qualquer ML mais complexo, comparar scores simples de fragilidade.
 
 ```text
-1 - p_top1
-entropy
-1 - margin_12
-p_top2 / p_top1
-p_top3 / p_top1
-combinação linear simples
+fragility_p       = 1 - p_top1
+fragility_margin  = 1 - margin_12
+fragility_entropy = entropy(p1, px, p2)
+fragility_ratio2  = p_top2 / p_top1
+fragility_ratio3  = p_top3 / p_top1
+fragility_gap23   = função(gap_23)
 ```
 
-Métricas prioritárias:
+Também testar combinações lineares simples, escolhidas somente com dados de treino:
 
 ```text
-Oracle Drop Capture @1
-Oracle Drop Capture @3
-Oracle Drop Capture @5
-Oracle Drop Capture @7
-Top1 Miss Capture @1/@3/@5/@7
+score =
+    a * (1 - p_top1)
+  + b * entropy
+  + c * ratio_top2_top1
+  + d * (1 - margin_12)
+```
+
+Métricas principais:
+
+```text
+OracleDropCapture@1/@3/@5/@7
+Top1MissCapture@1/@3/@5/@7
+Lift@1/@3/@5/@7
 ```
 
 Baseline atual do Oracle Drop Capture:
 
 ```text
-@1 = 9.78%
-@3 = 27.37%
-@5 = 44.82%
-@7 = 60.05%
+@1 =  9.78% | lift 1.37x
+@3 = 27.37% | lift 1.28x
+@5 = 44.82% | lift 1.25x
+@7 = 60.05% | lift 1.20x
 ```
 
-Também segmentar os resultados por:
+> Qualquer score novo deve vencer `1 - pTop1` prospectivamente. Ganho retrospectivo isolado não basta.
+
+---
+
+# Top1FragilitySegments
+
+Medir onde o sinal pré-jogo funciona melhor antes de criar um modelo universal.
+
+Segmentações prioritárias:
 
 ```text
 p_top1
 margin_12
-gap_23
 entropy
+p_top2
+gap_23
 ratio_top2_top1
 ratio_top3_top1
 perfil do concurso
 ```
 
+Bins iniciais para `p_top1`:
+
+```text
+0.33–0.40
+0.40–0.45
+0.45–0.50
+0.50–0.55
+0.55–0.60
+0.60+
+```
+
+Telemetria por segmento:
+
+```text
+n
+miss_rate
+oracle_drop_rate
+capture@K
+lift@K
+```
+
 Objetivo:
 
-> Descobrir em quais regiões do espaço probabilístico os Top1 frágeis são realmente identificáveis antes de recorrer a modelos aprendidos.
+> Descobrir regimes em que abandonar Top1 é muito mais previsível do que na média global.
 
 ---
 
-# RankReplacement baselines
+# RankReplacementBenchmark
 
-Depois de decidir abandonar Top1, testar primeiro regras simples para escolher Top2 ou Top3:
+Depois de identificar um Top1 candidato a abandono, responder primeiro com regras simples:
+
+> Top2 ou Top3?
+
+Baselines:
 
 ```text
 always_top2
 always_top3
+higher_probability
 probability_conditional
+ratio_conditional
+gap_conditional
 recovery_conditional
 ```
 
-Avaliar apenas nos casos relevantes:
+Avaliação nos casos relevantes:
 
 ```text
 replacement_accuracy
 top2_wins
 top3_wins
+delta_hits
+```
+
+Segmentar por:
+
+```text
+p_top2 - p_top3
+p_top3 / p_top2
+entropy
 ```
 
 Somente depois desses benchmarks criar um `RankReplacementModel` aprendido.
@@ -742,6 +790,10 @@ congelar distribuição
 aplicar em N+1
 ```
 
+Pergunta central:
+
+> É possível prever quando Top3 merece receber mais das cinco proteções?
+
 Somente esse teste pode promover uma distribuição SAFE diferente do baseline.
 
 ---
@@ -754,7 +806,8 @@ Comparações prioritárias:
 XYZ_DIRECT_P13 vs XYZ_COVERAGE
 14/0/5 vs 14/5/0
 best XYZ vs best SAFE
-novos Top1-drop scores vs 1-pTop1
+novos fragility scores vs 1-pTop1
+Top1DropModel vs melhor score simples
 ```
 
 Pairwise tail-aware:
@@ -765,7 +818,16 @@ wins / ties / losses
 12+ exclusivo A / ambos / exclusivo B
 ```
 
-Bootstrap:
+Como P13+ é raro, registrar também:
+
+```text
+exclusive_13plus_A
+exclusive_13plus_B
+both_13plus
+neither_13plus
+```
+
+Bootstrap pareado:
 
 ```text
 unidade = concurso inteiro
@@ -773,15 +835,24 @@ delta P13+
 delta P12+
 delta média
 IC95%
+P(delta P13+ > 0)
 ```
+
+> No baseline atual, P13+ corresponde a apenas sete concursos em 418. Diferenças pequenas de P13+ podem representar literalmente um único concurso.
 
 ---
 
-# Modelos aprendidos — somente depois dos benchmarks
+# Top1DropModel — somente depois dos benchmarks
 
-## Top1DropModel
+Primeiro modelo recomendado: **regressão logística**.
 
-Target:
+Target preferencial:
+
+```text
+oracle_drop = 1 se TrueOracleXYZ abandona Top1 naquele jogo
+```
+
+Target diagnóstico alternativo:
 
 ```text
 top1_miss = 1 se Top1 falhou
@@ -798,17 +869,54 @@ gap_23
 entropy
 ratio_top2_top1
 ratio_top3_top1
-posição
-perfil do concurso
 ```
 
-Uso:
+Features relativas ao concurso:
 
-> Ranqueia quais Top1 são melhores candidatos a serem sacrificados quando a distribuição XYZ exigir isso.
+```text
+rank_p_top1
+rank_entropy
+rank_margin_12
+p_top1 - mean_p_top1_contest
+entropy - mean_entropy_contest
+margin_12 - mean_margin_contest
+```
 
-O modelo só entra no pipeline se superar de forma prospectiva os scores simples de Top1 fragility.
+> O problema prático não é apenas estimar se um Top1 é fraco globalmente, mas decidir **quais Top1 são mais sacrificáveis entre os 14 jogos daquele concurso**.
 
-## RankReplacementModel
+O modelo só entra no pipeline se superar de forma prospectiva os scores simples de fragilidade.
+
+---
+
+# Ranking intra-concurso
+
+Tratar explicitamente a seleção de Top1 como problema de ranking.
+
+Objetivo:
+
+```text
+ordenar os 14 jogos por valor de abandono
+```
+
+Métrica de treinamento/seleção:
+
+```text
+OracleDropCapture@K
+```
+
+Métricas auxiliares:
+
+```text
+NDCG@K
+MAP@K
+MRR
+```
+
+A promoção continua dependente de P13+ do **ticket completo**, não dessas métricas intermediárias.
+
+---
+
+# RankReplacementModel
 
 Pergunta:
 
@@ -816,7 +924,37 @@ Pergunta:
 Top2 ou Top3?
 ```
 
-Deve vencer os baselines simples em walk-forward antes de entrar no pipeline.
+Só deve entrar depois que `RankReplacementBenchmark` estabelecer baselines simples claros e se vencer esses baselines em walk-forward.
+
+---
+
+# DropValue / DecisionValue
+
+Nem todo Top1 com alta probabilidade de erro merece ser abandonado.
+
+Criar diagnóstico orientado ao valor da decisão:
+
+```text
+DropValue_i =
+P(ticket >= 13 | abandonar Top1 no jogo i)
+-
+P(ticket >= 13 | manter Top1 no jogo i)
+```
+
+O objetivo de longo prazo deixa de ser apenas:
+
+```text
+qual Top1 vai errar?
+```
+
+para se tornar:
+
+```text
+em qual jogo alterar a configuração de marcações
+produz maior ganho esperado de P13+?
+```
+
+Essa formulação conecta naturalmente o `Top1DropModel` ao futuro `JointMarkAllocator`.
 
 ---
 
@@ -829,7 +967,7 @@ Tratar diretamente oportunidades:
 (game_i, Top3)
 ```
 
-Selecionar exatamente cinco, no máximo uma por jogo.
+Selecionar exatamente cinco, no máximo uma por jogo quando estiver no espaço SAFE, ou respeitar o estado XYZ correspondente.
 
 Baseline:
 
@@ -865,7 +1003,7 @@ posição
 perfil do concurso
 ```
 
-Target:
+Target simples:
 
 ```text
 extra_mark_hit = 1
@@ -873,25 +1011,113 @@ extra_mark_hit = 1
 
 quando a marca adicional recupera um erro do Top1.
 
+Target futuro preferível:
+
+```text
+delta_ticket_P13+
+```
+
+quando for possível estimar prospectivamente o valor da decisão sem leakage.
+
 ---
 
-# Robustez
+# ExperimentRegistry
 
-Implementações futuras:
+Com o crescimento do número de estratégias, registrar toda execução em:
+
+```text
+output/experiments.csv
+```
+
+Campos mínimos:
+
+```text
+experiment_id
+timestamp
+git_commit
+dataset_hash
+model_version
+strategy
+parameters
+P13+
+P12+
+mean
+oracle_capture@5
+bootstrap_low
+bootstrap_high
+```
+
+Objetivos:
+
+```text
+reprodutibilidade
+comparação histórica
+evitar cherry-picking involuntário
+reduzir winner's curse
+```
+
+---
+
+# DatasetFingerprint
+
+Todo resultado persistido deve identificar exatamente a base utilizada.
+
+```text
+dataset_rows
+first_contest
+last_contest
+dataset_sha256
+model_version
+git_commit
+```
+
+O fingerprint deve aparecer em `model.json`, logs de execução e `experiments.csv`.
+
+> Pequenas mudanças na base podem alterar P13+ em um concurso inteiro. Sem fingerprint, resultados antigos e atuais podem parecer comparáveis quando não são.
+
+---
+
+# Robustez temporal
+
+Comparar:
 
 ```text
 rolling 50
 rolling 100
 rolling 200
 expanding
-stability por era
-decay temporal
-Stability / Churn
-controle de múltiplos testes
-output/experiments.csv
 ```
 
+Também avaliar:
+
+```text
+stability por era
+leave-one-era-out
+decay temporal
+Stability / Churn
+```
+
+Pergunta central:
+
+> O score que encontra Top1 frágeis continua funcionando em diferentes períodos ou depende de uma composição específica da amostra recente?
+
+---
+
+# Controle de múltiplos testes
+
 Quanto maior o search space, maior o risco de `winner's curse`.
+
+Implementações desejáveis:
+
+```text
+registro de todos os experimentos
+holdout final protegido
+limite de decisões baseadas no mesmo recorte
+bootstrap pareado
+correção/controle de múltiplas comparações quando aplicável
+```
+
+Não promover uma estratégia apenas porque venceu entre dezenas de alternativas testadas no mesmo período.
 
 ---
 
@@ -907,6 +1133,8 @@ TrueOracleXYZ somente diagnostic_only
 P13+ exato reproduzível
 bootstrap por concurso inteiro
 train_contest < test_contest
+DatasetFingerprint reproduzível
+mesmo seed → mesmo resultado quando aplicável
 ```
 
 ---
@@ -948,58 +1176,74 @@ python -m unittest discover -v
 - [x] XYZ_COVERAGE × XYZ_DIRECT_P13;
 - [x] telemetria model_P13+ × historical_P13+;
 - [x] Top1 Miss Capture;
-- [x] Top1 Drop Oracle Capture.
+- [x] Top1 Drop Oracle Capture;
+- [x] referência aleatória e Lift@K documentados.
 
 ## Fase 1 — validar o objetivo direto
 
 1. [ ] pairwise tail-aware `XYZ_DIRECT_P13 vs XYZ_COVERAGE`;
 2. [ ] bootstrap pareado por concurso;
-3. [ ] estabilidade por janela/era.
+3. [ ] estabilidade do ganho por janela/era.
 
-## Fase 2 — melhorar a localização de Top1 frágil
+## Fase 2 — `Top1FragilityBenchmark`
 
 4. [ ] benchmark `entropy`;
 5. [ ] benchmark `1 - margin_12`;
 6. [ ] benchmark `p_top2 / p_top1`;
 7. [ ] benchmark `p_top3 / p_top1`;
-8. [ ] combinações simples de scores;
-9. [ ] segmentação por força de Top1, margem e entropia;
-10. [ ] Structural Gap / Oracle Capture baseado em média.
+8. [ ] benchmark `gap_23`;
+9. [ ] combinações lineares simples de scores;
+10. [ ] comparação Capture@K e Lift@K;
+11. [ ] pairwise do melhor score vs `1 - pTop1`.
 
-## Fase 3 — validar SAFE
+## Fase 3 — `Top1FragilitySegments`
 
-11. [ ] NestedDistributionSelector;
-12. [ ] bootstrap `14/0/5 vs 14/5/0`;
-13. [ ] OracleDistribution Usage;
-14. [ ] regret por distribuição SAFE fixa.
+12. [ ] segmentação por força de Top1;
+13. [ ] segmentação por margem;
+14. [ ] segmentação por entropia;
+15. [ ] segmentação por ratios e gap_23;
+16. [ ] features relativas ao concurso;
+17. [ ] Structural Gap / Oracle Capture baseado em média.
 
-## Fase 4 — aprender seleção XYZ
+## Fase 4 — validar SAFE e replacement simples
 
-15. [ ] RankReplacement baselines;
-16. [ ] dataset Top1DropModel;
-17. [ ] walk-forward Top1DropModel;
-18. [ ] RankReplacementModel;
-19. [ ] comparar arquitetura modular com XYZ_DIRECT_P13;
-20. [ ] somente então NestedXYZDistributionSelector.
+18. [ ] `RankReplacementBenchmark`;
+19. [ ] `NestedDistributionSelector`;
+20. [ ] bootstrap `14/0/5 vs 14/5/0`;
+21. [ ] OracleDistribution Usage;
+22. [ ] regret por distribuição SAFE fixa.
 
-## Fase 5 — otimização conjunta
+## Fase 5 — aprender seleção XYZ
 
-21. [ ] JointMarkAllocator;
-22. [ ] joint_probability;
-23. [ ] Opportunity Dataset;
-24. [ ] DoubleValueModel;
-25. [ ] joint_learned;
-26. [ ] nested walk-forward.
+23. [ ] dataset `Top1DropModel`;
+24. [ ] regressão logística walk-forward;
+25. [ ] benchmark de ranking intra-concurso;
+26. [ ] Top1DropModel vs melhor score simples;
+27. [ ] `RankReplacementModel`;
+28. [ ] comparar arquitetura modular com `XYZ_DIRECT_P13`;
+29. [ ] somente então `NestedXYZDistributionSelector`.
 
-## Fase 6 — robustez final
+## Fase 6 — valor da decisão e otimização conjunta
 
-27. [ ] rolling 50/100/200 vs expanding;
-28. [ ] stability por era;
-29. [ ] decay temporal;
-30. [ ] Stability / Churn;
-31. [ ] controle de múltiplos testes;
-32. [ ] output/experiments.csv;
-33. [ ] bootstrap final.
+30. [ ] `DropValue / DecisionValue`;
+31. [ ] `JointMarkAllocator`;
+32. [ ] `joint_probability`;
+33. [ ] Opportunity Dataset;
+34. [ ] DoubleValueModel;
+35. [ ] `joint_learned`;
+36. [ ] nested walk-forward.
+
+## Fase 7 — reprodutibilidade e robustez
+
+37. [ ] `DatasetFingerprint`;
+38. [ ] `ExperimentRegistry` / `output/experiments.csv`;
+39. [ ] rolling 50/100/200 vs expanding;
+40. [ ] leave-one-era-out / stability por era;
+41. [ ] decay temporal;
+42. [ ] Stability / Churn;
+43. [ ] controle de múltiplos testes;
+44. [ ] bootstrap final;
+45. [ ] holdout final protegido.
 
 ## Radius=2
 
@@ -1008,6 +1252,15 @@ NÃO ABRIR AGORA
 ```
 
 O raio 1 já possui enorme capacidade estrutural. Expandir antes de melhorar a seleção pré-jogo aumenta apenas o risco de overfitting.
+
+Também não priorizar agora:
+
+```text
+deep learning
+grande grid search
+XGBoost hiperotimizado
+mais dezenas de distribuições XYZ
+```
 
 ---
 
@@ -1027,6 +1280,8 @@ apresentar bootstrap/IC compatível com ganho real
 manter estabilidade temporal
 ↓
 respeitar todas as Hard Constraints
+↓
+ser reproduzível por dataset/model/git fingerprint
 ```
 
 Para XYZ:
@@ -1038,9 +1293,11 @@ novo método precisa capturar parte do headroom usando apenas pré-jogo
 ↓
 Direct-P13 precisa vencer Coverage fora da amostra
 ↓
-Top1DropModel precisa vencer scores simples de fragilidade
+fragility score novo precisa vencer 1-pTop1
 ↓
-modelos aprendidos precisam vencer benchmarks simples
+Top1DropModel precisa vencer o melhor score simples
+↓
+RankReplacementModel precisa vencer baselines simples
 ↓
 NestedXYZ só entra quando existir candidato operacional competitivo
 ```
@@ -1064,21 +1321,31 @@ Top1 Miss Capture / Drop Oracle Capture
       ↓
 SINAL PRÉ-JOGO EXISTE, MAS AINDA É MODERADO
       ↓
-melhorar ranking de Top1 frágil
+Top1FragilityBenchmark
       +
-Pairwise / Bootstrap
+Lift@K / FragilitySegments
+      +
+RankReplacementBenchmark
       +
 Nested SAFE
+      ↓
+Top1DropModel / ranking intra-concurso
       +
-Top1DropModel / RankReplacementModel
+RankReplacementModel
+      ↓
+DropValue / DecisionValue
       +
 JointMarkAllocator / DoubleValueModel
-      +
+      ↓
 NestedXYZ somente com candidato competitivo
       +
-Robustez temporal
+ExperimentRegistry / DatasetFingerprint
+      +
+Robustez temporal / holdout final
       ↓
 PALPITE FINAL
 ```
+
+> **O projeto não precisa agora de mais espaço combinatório; precisa aprender a navegar muito melhor o espaço que já possui.**
 
 > **Não promover a melhor regra observada; promover apenas a regra que continuar melhor quando escolhida usando somente o passado e avaliada prospectivamente.**
