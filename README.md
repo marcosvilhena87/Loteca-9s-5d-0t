@@ -556,11 +556,16 @@ Telemetria:
 
 ```text
 [TOP1 MISS CAPTURE]
-k=1 → misses capturados: ...
-k=3 → misses capturados: ...
-k=5 → misses capturados: ...
-k=7 → misses capturados: ...
+k=1 → 267 / 2842 (9.39%)
+k=3 → 773 / 2842 (27.20%)
+k=5 → 1253 / 2842 (44.09%)
+k=7 → 1683 / 2842 (59.22%)
 ```
+
+Implementado como diagnóstico retrospectivo no mesmo recorte de avaliação
+walk-forward. O ranking de candidatos usa exclusivamente `1 - pTop1`; o
+resultado real entra apenas no cálculo de `captured_misses / total_top1_misses`.
+O diagnóstico não altera o ticket operacional.
 
 Objetivo:
 
@@ -580,7 +585,22 @@ top 5 candidatos: ...
 top 7 candidatos: ...
 ```
 
+Resultado atual:
+
+```text
+k=1 → 199 / 2035 (9.78%)
+k=3 → 557 / 2035 (27.37%)
+k=5 → 912 / 2035 (44.82%)
+k=7 → 1222 / 2035 (60.05%)
+```
+
 Esse diagnóstico mede quanta informação útil existe para aproximar o comportamento do oracle sem utilizar resultado futuro.
+
+Implementado com o TrueOracleXYZ de raio 1. Para cada concurso, o ticket oracle
+é construído apenas na camada `diagnostic_only`; em seguida, os Top1 abandonados
+são comparados com a lista pré-jogo ordenada por `1 - pTop1`. São reportados o
+numerador, o total de abandonos e a taxa de captura, evitando que percentuais
+com denominadores diferentes sejam confundidos.
 
 ---
 
@@ -843,8 +863,8 @@ python -m unittest discover -v
 
 ## Fase 2 — medir o sinal disponível para abandonar Top1
 
-7. [ ] `Top1 Miss Capture`;
-8. [ ] `Top1 Drop Oracle Capture`;
+7. [x] `Top1 Miss Capture`;
+8. [x] `Top1 Drop Oracle Capture`;
 9. [ ] Structural Gap / Oracle Capture baseado em média;
 10. [ ] segmentação por força de Top1, margem e entropia.
 

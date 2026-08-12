@@ -121,6 +121,16 @@ def main() -> None:
           f"medianas {profile['median_top1']:.0f}/"
           f"{profile['median_top2']:.0f}/{profile['median_top3']:.0f}")
     print(f"[ACTUAL RANK PROFILE MOST COMMON] {profile['most_common_profiles']}")
+    miss_capture = model["top1_miss_capture"]
+    print("[TOP1 MISS CAPTURE]")
+    for cutoff, result in miss_capture["cutoffs"].items():
+        print(f"  k={cutoff}: {result['captured_misses']}/"
+              f"{miss_capture['total_top1_misses']} ({result['capture_rate']:.2%})")
+    drop_capture = model["top1_drop_oracle_capture"]
+    print("[TOP1 DROP ORACLE CAPTURE]")
+    for cutoff, result in drop_capture["cutoffs"].items():
+        print(f"  k={cutoff}: {result['captured_oracle_drops']}/"
+              f"{drop_capture['total_oracle_drops']} ({result['capture_rate']:.2%})")
     print("[TRUE ORACLE XYZ BY DISTRIBUTION]")
     for name, result in true_xyz["by_distribution"].items():
         print(f"  {name}: P13+ {result['p13_plus_empirical']:.2%} | "
